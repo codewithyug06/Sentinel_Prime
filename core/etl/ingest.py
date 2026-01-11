@@ -41,6 +41,7 @@ class IngestionEngine:
                 # 4. TOTAL ACTIVITY CALCULATION
                 if 'total_activity' not in temp.columns:
                     num_cols = temp.select_dtypes(include='number').columns
+                    # Only sum relevant columns to avoid summing unrelated metrics
                     sum_cols = [c for c in num_cols if 'age' in c or 'count' in c]
                     if sum_cols:
                         temp['total_activity'] = temp[sum_cols].sum(axis=1)
@@ -59,11 +60,10 @@ class IngestionEngine:
                         temp[col] = temp[col].fillna('Unknown')
                         
                         # Remove explicit bad values requested by user
-                        blacklist = ["10000", "0", "1", "nan", "null"]
-                        temp = temp[~temp[col].astype(str).isin(blacklist)]
-                        
-                        # Remove any row where State/District is purely numeric (e.g. "12345")
-                        temp = temp[~temp[col].astype(str).str.isnumeric()]
+                        # Also removes rows where district names are purely numeric (like "10000")
+                        mask_valid = ~temp[col].astype(str).isin(["10000", "0", "1", "nan", "null"]) & \
+                                     ~temp[col].astype(str).str.isnumeric()
+                        temp = temp[mask_valid]
 
                 df_list.append(temp)
             except Exception as e:
@@ -78,8 +78,9 @@ class IngestionEngine:
         if 'date' in master.columns:
             master = master.dropna(subset=['date'])
         
-        # 7. GEO-SIMULATION
+        # 7. GEO-SIMULATION (Fallback for missing Lat/Lon)
         if 'lat' not in master.columns:
+            # Simulate generic India bounds
             master['lat'] = np.random.uniform(8.4, 37.6, len(master))
         if 'lon' not in master.columns:
             master['lon'] = np.random.uniform(68.7, 97.2, len(master))
