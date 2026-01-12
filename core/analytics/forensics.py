@@ -85,11 +85,13 @@ class ForensicEngine:
         
         # Prepare Features
         # Using Lat/Lon acts as a proxy for "Location Context"
+        # In a real scenario, we would add 'Time of Day', 'Operator ID', etc.
         features = df[['total_activity', 'lat', 'lon']].fillna(0)
         
-        # Model
+        # Model: Isolation Forest
+        # Designed to detect anomalies that are 'few and different'
         clf = IsolationForest(contamination=0.02, random_state=42)
-        df = df.copy() # Prevent SettingWithCopyWarning
+        df = df.copy() 
         df['anomaly_score'] = clf.fit_predict(features)
         
         # -1 indicates anomaly, 1 indicates normal.

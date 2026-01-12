@@ -14,7 +14,6 @@ class SpatialEngine:
             return pd.DataFrame()
         
         # Simple aggregation for heatmap
-        # In prod: Use h3.geo_to_h3
         return df[['lat', 'lon', 'total_activity']].copy()
 
     @staticmethod
@@ -37,9 +36,7 @@ class SpatialEngine:
             G.add_node(row['district'], pos=(row['lon'], row['lat']))
             
         # Create probabilistic edges based on "Gravity Model"
-        # Flow ~ (Pop_A * Pop_B) / Distance^2
         districts = top_hubs['district'].tolist()
-        coords = top_hubs[['lon', 'lat']].values
         
         import random
         for i in range(len(districts)):

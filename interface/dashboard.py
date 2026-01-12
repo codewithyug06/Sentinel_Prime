@@ -14,7 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # IMPORT CORE ENGINES
 from config.settings import config
 from core.etl.ingest import IngestionEngine
-# UPDATED IMPORTS FOR ADVANCED MODELS
+# UPDATED IMPORTS FOR ADVANCED MODELS (GOD MODE)
 from core.models.lstm import ForecastEngine, AdvancedForecastEngine 
 from core.analytics.forensics import ForensicEngine
 from core.analytics.segmentation import SegmentationEngine 
@@ -211,14 +211,14 @@ tabs = st.tabs([
 ])
 
 # ------------------------------------------------------------------------------
-# TAB 1: GOD'S EYE (3D ARCS & HEXAGONS) (NEW)
+# TAB 1: GOD'S EYE (3D ARCS & HEXAGONS) (NEW FEATURE UPGRADE)
 # ------------------------------------------------------------------------------
 with tabs[0]:
     col_map, col_stat = st.columns([3, 1])
     
     with col_map:
         st.subheader("🌐 3D BALLISTIC MIGRATION TRACKER")
-        # Downsample for speed
+        # Downsample for speed (Safety Guard)
         map_df = SpatialEngine.downsample_for_map(active_df, 5000)
         
         # 1. Hexagon Layer (Density)
@@ -263,13 +263,13 @@ with tabs[0]:
         st.dataframe(active_df[['district', 'total_activity']].head(10), hide_index=True, use_container_width=True)
 
 # ------------------------------------------------------------------------------
-# TAB 2: TITAN PREDICTION (TRANSFORMER LOGIC) (NEW)
+# TAB 2: TITAN PREDICTION (TRANSFORMER LOGIC) (NEW FEATURE UPGRADE)
 # ------------------------------------------------------------------------------
 with tabs[1]:
     st.subheader("🧠 SOVEREIGN TITAN-NET PREDICTION")
     
     if len(active_df) > 50:
-        # Use Advanced Engine
+        # Use Advanced Engine (God Mode)
         forecaster = AdvancedForecastEngine(active_df)
         forecast = forecaster.generate_god_forecast(days=45)
         
@@ -289,7 +289,7 @@ with tabs[1]:
                     x=forecast['Date'], y=forecast['Titan_Prediction'],
                     mode='lines', name='TitanNet AI Projection', line=dict(color=config.THEME_PRIMARY, width=3)
                 ))
-                # Legacy Prediction
+                # Legacy Prediction (Baseline)
                 fig.add_trace(go.Scatter(
                     x=forecast['Date'], y=forecast['Predicted_Load'],
                     mode='lines', name='Legacy LSTM Baseline', line=dict(color='gray', dash='dot')
@@ -307,7 +307,7 @@ with tabs[1]:
         st.warning("Insufficient temporal data for Deep Learning.")
 
 # ------------------------------------------------------------------------------
-# TAB 3: DEEP FORENSICS (ISOLATION FOREST) (NEW)
+# TAB 3: DEEP FORENSICS (ISOLATION FOREST) (NEW FEATURE UPGRADE)
 # ------------------------------------------------------------------------------
 with tabs[2]:
     st.subheader("🧬 UNSUPERVISED ANOMALY DETECTION")
@@ -322,7 +322,7 @@ with tabs[2]:
         if not anomalies.empty:
             st.error(f"AI DETECTED {len(anomalies)} SPATIAL ANOMALIES")
             fig_a = px.scatter(anomalies, x='total_activity', y='severity', color='severity', 
-                             title="Anomaly Severity Matrix", color_continuous_scale='reds')
+                            title="Anomaly Severity Matrix", color_continuous_scale='reds')
             fig_a.update_layout(template="plotly_dark", plot_bgcolor=config.THEME_BG)
             st.plotly_chart(fig_a, use_container_width=True)
             st.dataframe(anomalies[['district', 'total_activity', 'severity']].head(5), use_container_width=True)
@@ -333,10 +333,10 @@ with tabs[2]:
         st.markdown("#### 📉 BENFORD'S LAW INTEGRITY")
         benford_df, is_bad = ForensicEngine.calculate_benfords_law(active_df)
         if not benford_df.empty and 'Expected' in benford_df.columns:
-            # Robust Melt
+            # Robust Melt Logic
             df_long = benford_df.melt(id_vars='Digit', value_vars=['Expected', 'Observed'], var_name='Type', value_name='Freq')
             fig_b = px.bar(df_long, x='Digit', y='Freq', color='Type', barmode='group',
-                          color_discrete_map={'Expected': 'gray', 'Observed': config.THEME_PRIMARY})
+                        color_discrete_map={'Expected': 'gray', 'Observed': config.THEME_PRIMARY})
             fig_b.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig_b, use_container_width=True)
 
