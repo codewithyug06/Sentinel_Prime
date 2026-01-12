@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import networkx as nx
+import random
 
 # NEW: Graph Neural Network (GNN) Simulator
 class GraphNeuralNetwork:
@@ -22,6 +23,10 @@ class SpatialEngine:
     
     @staticmethod
     def generate_h3_hexagons(df, resolution=4):
+        """
+        Generates H3 Hexagon data for aggregation.
+        If the 'h3' library is missing, it falls back to raw lat/lon aggregation.
+        """
         if 'lat' not in df.columns or 'lon' not in df.columns:
             return pd.DataFrame()
         
@@ -78,6 +83,7 @@ class SpatialEngine:
         """
         Generates source-target pairs for PyDeck ArcLayer.
         Simulates migration from low-activity areas (Source) to High-activity Hubs (Target).
+        OPTIMIZATION: Limits calculation to top flows to prevent browser crash.
         """
         if df.empty or 'district' not in df.columns: return pd.DataFrame()
         
@@ -90,8 +96,9 @@ class SpatialEngine:
         
         if len(stats) < 2: return pd.DataFrame()
         
+        # Limit to top 5 Targets and random 20 Sources to keep arc count manageable
         targets = stats.nlargest(5, 'total_activity')
-        sources = stats.nsmallest(20, 'total_activity')
+        sources = stats.nsmallest(min(20, len(stats)), 'total_activity')
         
         arcs = []
         import random
@@ -100,15 +107,17 @@ class SpatialEngine:
             # Connect source to a random major hub
             target = targets.sample(1).iloc[0]
             
-            # Color logic: Red (High volume) to Green (Low volume)
-            arcs.append({
-                "source_text": src['district'],
-                "target_text": target['district'],
-                "source": [src['lon'], src['lat']],
-                "target": [target['lon'], target['lat']],
-                "value": random.randint(100, 1000), # Simulated flow volume
-                "color": [0, 255, 194, 200] if random.random() > 0.5 else [255, 0, 100, 200]
-            })
+            # Ensure we don't connect a district to itself
+            if src['district'] != target['district']:
+                # Color logic: Red (High volume) to Green (Low volume)
+                arcs.append({
+                    "source_text": src['district'],
+                    "target_text": target['district'],
+                    "source": [src['lon'], src['lat']],
+                    "target": [target['lon'], target['lat']],
+                    "value": random.randint(100, 1000), # Simulated flow volume
+                    "color": [0, 255, 194, 200] if random.random() > 0.5 else [255, 0, 100, 200]
+                })
             
         return pd.DataFrame(arcs)
 
