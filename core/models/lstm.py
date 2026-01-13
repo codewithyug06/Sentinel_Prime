@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
@@ -248,7 +249,7 @@ class AdvancedForecastEngine(ForecastEngine):
         }
 
 # ==============================================================================
-# 3. V8.0 SOVEREIGN UPGRADES: TFT & PROBABILISTIC FORECASTING
+# 3. V9.8 SOVEREIGN UPGRADES: TFT & PROBABILISTIC FORECASTING
 # ==============================================================================
 
 class ProbabilisticAdapter:
@@ -390,3 +391,58 @@ class StressTestEngine:
         results['DBT_Launch'] = s3
         
         return results
+
+# ==============================================================================
+# 5. NEW V9.9: BAYESIAN NEURAL NETWORK (UNCERTAINTY QUANTIFICATION)
+# ==============================================================================
+class BayesianTitanNet(nn.Module):
+    """
+    Uses MC-Dropout during inference to simulate Bayesian approximation.
+    This gives the model a sense of 'Self-Doubt' (Epistemic Uncertainty).
+    """
+    def __init__(self, input_size=1, hidden_size=128, dropout_rate=0.2):
+        super(BayesianTitanNet, self).__init__()
+        self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
+        self.dropout = nn.Dropout(dropout_rate)
+        self.fc = nn.Linear(hidden_size, 1)
+        
+    def forward(self, x):
+        out, _ = self.lstm(x)
+        out = self.dropout(out[:, -1, :]) # Apply dropout during inference
+        return self.fc(out)
+
+    @staticmethod
+    def calculate_uncertainty_quantification(model_preds):
+        """
+        Takes multiple MC-Dropout passes and returns Mean + Variance.
+        Args:
+            model_preds (np.array): Shape (n_samples, n_timesteps)
+        """
+        mean_pred = np.mean(model_preds, axis=0)
+        epistemic_uncertainty = np.var(model_preds, axis=0) # Model uncertainty
+        
+        return mean_pred, epistemic_uncertainty
+
+# ==============================================================================
+# 6. NEW V9.9: SPATIOTEMPORAL GCN (ST-GCN) LAYER
+# ==============================================================================
+class SpatiotemporalGCNLayer(nn.Module):
+    """
+    Graph Convolution over time.
+    X_t+1 = Activation( A * X_t * W )
+    Where A is the Adjacency Matrix of district migration flows.
+    """
+    def __init__(self, in_features, out_features):
+        super(SpatiotemporalGCNLayer, self).__init__()
+        self.weight = nn.Parameter(torch.FloatTensor(in_features, out_features))
+        nn.init.xavier_uniform_(self.weight)
+        
+    def forward(self, x, adj):
+        """
+        x: Node features (Batch, Nodes, Features)
+        adj: Adjacency Matrix (Nodes, Nodes)
+        """
+        # Graph Convolution Logic: AXW
+        support = torch.matmul(x, self.weight)
+        output = torch.matmul(adj, support)
+        return F.relu(output)

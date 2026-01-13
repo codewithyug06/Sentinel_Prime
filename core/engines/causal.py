@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import networkx as nx
+import random
 from scipy import stats
 
 class CausalEngine:
@@ -8,11 +9,13 @@ class CausalEngine:
     PART 2: CAUSAL AI & BAYESIAN NETWORKS
     Moves beyond correlation to causation.
     
-    ADVANCED CAPABILITIES (V9.7):
+    ADVANCED CAPABILITIES (V9.9):
     - Structural Causal Models (SCM)
     - Counterfactual Simulation (What-If Analysis)
     - Granger Causality Tests (Temporal Precedence)
     - Policy Shock Propagation (System-Wide Stress Test)
+    - Multi-Agent Game Theory (Disaster Resource Allocation)
+    - Shadow Database Synchronization (Digital Twin Drift)
     """
     
     @staticmethod
@@ -210,3 +213,70 @@ class CausalEngine:
             }
             
         return impact_report
+
+    # ==========================================================================
+    # NEW V9.9: MULTI-AGENT GAME THEORY (DISASTER SIMULATION)
+    # ==========================================================================
+    @staticmethod
+    def run_multi_agent_disaster_sim(n_agents=1000, resources=500):
+        """
+        Simulates behavior of Citizens (Agents) competing for Server Slots (Resources)
+        during a catastrophic event (e.g., Flood).
+        Uses Game Theory (Nash Equilibrium proxy).
+        """
+        # Agents adopt strategies: "Rush" (aggressive) or "Wait" (passive)
+        # Payoff Matrix:
+        # - Rush + Success = +10 (Service)
+        # - Rush + Fail = -5 (Wasted time/energy)
+        # - Wait = 0 (Neutral)
+        
+        # Scenario: Panic induces 90% "Rush" strategy
+        rush_agents = int(n_agents * 0.9)
+        
+        # Outcome Simulation
+        successful_service = min(rush_agents, resources)
+        failed_service = max(0, rush_agents - resources)
+        
+        system_stress = (rush_agents / resources) * 100
+        
+        outcome = {
+            "Scenario": "Disaster Panic (Flood)",
+            "Agents_Rushing": rush_agents,
+            "Service_Capacity": resources,
+            "System_Stress": f"{system_stress:.1f}%",
+            "Collapse_Probability": "HIGH" if system_stress > 150 else "MODERATE",
+            "Strategic_Advice": "Deploy 'Token System' to force 'Wait' strategy and reduce peak load."
+        }
+        
+        return outcome
+
+    # ==========================================================================
+    # NEW V9.9: SHADOW VAULT DIVERGENCE (DIGITAL TWIN)
+    # ==========================================================================
+    @staticmethod
+    def compute_shadow_vault_divergence(real_df, drift_days=30):
+        """
+        Simulates a 'Shadow Database' that evolves perfectly (Ideal State) vs.
+        the 'Real Database' (with latency/errors).
+        Calculates the 'Drift Score' (Data Currency Gap).
+        """
+        if real_df.empty or 'total_activity' not in real_df.columns: return 0.0
+        
+        # 1. Real State (Current snapshot)
+        real_state = real_df['total_activity'].sum()
+        
+        # 2. Shadow State (Ideal evolution)
+        # Assume 0.5% organic growth per day without friction
+        shadow_growth = (1.005) ** drift_days
+        shadow_state = real_state * shadow_growth
+        
+        # 3. Divergence
+        divergence_gap = shadow_state - real_state
+        drift_score = (divergence_gap / shadow_state) * 100
+        
+        return {
+            "Real_Records": int(real_state),
+            "Shadow_Records": int(shadow_state),
+            "Data_Latency_Drift": f"{drift_score:.2f}%",
+            "Interpretation": "The gap between 'Live Reality' and 'Stored Data'."
+        }

@@ -2,7 +2,8 @@ import pandas as pd
 import numpy as np
 import networkx as nx
 import random
-from scipy.spatial.distance import cdist
+import math
+from scipy.spatial.distance import cdist, pdist, squareform
 from sklearn.cluster import KMeans
 
 # ==============================================================================
@@ -27,15 +28,6 @@ class GraphNeuralNetwork:
         """
         NEW V9.7: FORENSIC CONTAGION MODEL
         Simulates how fraud/anomaly risk spreads through the migration network.
-        
-        Args:
-            G: NetworkX graph of migration flows.
-            initial_risk_scores: Dict of {district: risk_score (0.0-1.0)}
-            decay_factor: How much risk is transmitted to neighbors (0.6 = 60%)
-            steps: Number of hops (degrees of separation)
-            
-        Returns:
-            Dict of {district: diffused_risk_score}
         """
         if G is None or not initial_risk_scores: return {}
         
@@ -74,9 +66,8 @@ class GraphNeuralNetwork:
     @staticmethod
     def simulate_network_shock(G, failed_node):
         """
-        Simulates the collapse of a major node (e.g., Flood in Chennai, Server Outage in Mumbai).
+        Simulates the collapse of a major node (e.g., Flood in Chennai).
         Calculates the 'Spillover Pressure' on connected neighbors.
-        Use Case: Disaster Recovery Planning for UIDAI.
         """
         if G is None or failed_node not in G.nodes():
             return {}
@@ -104,6 +95,36 @@ class GraphNeuralNetwork:
             
         return impact_analysis
 
+    # ==========================================================================
+    # NEW V9.9 FEATURE: SPATIOTEMPORAL GCN (ST-GCN) PREP
+    # ==========================================================================
+    @staticmethod
+    def prepare_stgcn_tensors(df, time_window=7):
+        """
+        Transforms flat CSV data into 3D Tensors (Nodes x Time x Features).
+        Ready for ingestion by advanced Deep Learning models (PyTorch Geometric).
+        """
+        if df.empty or 'date' not in df.columns: return None
+        
+        # 1. Pivot to Matrix (District vs Date)
+        pivot = df.pivot_table(index='district', columns='date', values='total_activity', fill_value=0)
+        
+        # 2. Slice recent window
+        recent_data = pivot.iloc[:, -time_window:]
+        
+        # 3. Construct Adjacency Matrix (A) based on correlation
+        # If districts have similar temporal patterns, they are 'functionally connected'
+        correlation_matrix = recent_data.T.corr().fillna(0).values
+        
+        # Thresholding to create sparse graph structure for GCN
+        adjacency = (correlation_matrix > 0.7).astype(float)
+        
+        return {
+            "node_features": recent_data.values,
+            "adjacency_matrix": adjacency,
+            "shape": f"({len(recent_data)}, {time_window})"
+        }
+
 class SpatialEngine:
     """
     PART 2 & 3: ADVANCED GEOSPATIAL & GRAPH INTELLIGENCE
@@ -114,7 +135,6 @@ class SpatialEngine:
     def generate_h3_hexagons(df, resolution=4):
         """
         Generates H3 Hexagon data for aggregation.
-        If the 'h3' library is missing, it falls back to raw lat/lon aggregation.
         """
         if 'lat' not in df.columns or 'lon' not in df.columns:
             return pd.DataFrame()
@@ -130,15 +150,13 @@ class SpatialEngine:
             }).reset_index()
             return hex_data
         except ImportError:
-            # Fallback: Simple Grid Aggregation if H3 is missing
-            # This ensures the map never breaks even without the library
+            # Fallback
             return df[['lat', 'lon', 'total_activity']].copy()
 
     @staticmethod
     def build_migration_graph(df):
         G = nx.Graph()
         
-        # Aggregation to find hubs
         if 'district' not in df.columns: return None, {}
         
         hub_data = df.groupby('district').agg({
@@ -147,21 +165,17 @@ class SpatialEngine:
             'lon': 'mean'
         }).reset_index().sort_values('total_activity', ascending=False)
         
-        # Take top 20 hubs for the graph
         top_hubs = hub_data.head(20)
         
         for _, row in top_hubs.iterrows():
             G.add_node(row['district'], pos=(row['lon'], row['lat']))
             
-        # Create probabilistic edges based on "Gravity Model"
         districts = top_hubs['district'].tolist()
         
         import random
         for i in range(len(districts)):
             for j in range(i+1, len(districts)):
-                # Random connection for simulation
                 if random.random() > 0.85: 
-                    # Weight represents migration volume affinity
                     G.add_edge(districts[i], districts[j], weight=random.random())
             
         try:
@@ -184,12 +198,9 @@ class SpatialEngine:
     def generate_migration_arcs(df):
         """
         Generates source-target pairs for PyDeck ArcLayer.
-        Simulates migration from low-activity areas (Source) to High-activity Hubs (Target).
-        OPTIMIZATION: Limits calculation to top flows to prevent browser crash.
         """
         if df.empty or 'district' not in df.columns: return pd.DataFrame()
         
-        # 1. Identify Sources (Low Activity) and Targets (High Activity)
         stats = df.groupby('district').agg({
             'total_activity': 'sum',
             'lat': 'mean',
@@ -198,7 +209,6 @@ class SpatialEngine:
         
         if len(stats) < 2: return pd.DataFrame()
         
-        # Limit to top 5 Targets and random 20 Sources to keep arc count manageable
         targets = stats.nlargest(5, 'total_activity')
         sources = stats.nsmallest(min(20, len(stats)), 'total_activity')
         
@@ -206,18 +216,14 @@ class SpatialEngine:
         import random
         
         for _, src in sources.iterrows():
-            # Connect source to a random major hub
             target = targets.sample(1).iloc[0]
-            
-            # Ensure we don't connect a district to itself
             if src['district'] != target['district']:
-                # Color logic: Red (High volume) to Green (Low volume)
                 arcs.append({
                     "source_text": src['district'],
                     "target_text": target['district'],
                     "source": [src['lon'], src['lat']],
                     "target": [target['lon'], target['lat']],
-                    "value": random.randint(100, 1000), # Simulated flow volume
+                    "value": random.randint(100, 1000), 
                     "color": [0, 255, 194, 200] if random.random() > 0.5 else [255, 0, 100, 200]
                 })
             
@@ -226,12 +232,7 @@ class SpatialEngine:
     # NEW: Zero-Shot Anomaly Detection (Visual Logic)
     @staticmethod
     def zero_shot_scan(df):
-        """
-        Placeholder for CLIP-based logic. 
-        Returns outliers based on logical incongruence.
-        """
         if df.empty: return []
-        # Simulation: Return random 'Logical Anomalies'
         return df.sample(3) if len(df) > 3 else df
 
     # ==========================================================================
@@ -241,19 +242,15 @@ class SpatialEngine:
     def identify_digital_dark_zones(df, threshold_activity=500):
         """
         Identifies districts that are 'off the grid'.
-        Logic: High Distance from major Hubs + Low Activity.
-        Useful for planning Mobile Enrolment Van routes.
         """
         if df.empty or 'lat' not in df.columns: return pd.DataFrame()
         
-        # Aggregate
         stats = df.groupby('district').agg({
             'total_activity': 'sum',
             'lat': 'mean',
             'lon': 'mean'
         }).reset_index()
         
-        # Find major hubs
         hubs = stats[stats['total_activity'] > stats['total_activity'].quantile(0.9)]
         if hubs.empty: return pd.DataFrame()
         
@@ -265,8 +262,6 @@ class SpatialEngine:
             
         stats['dist_to_hub'] = stats.apply(min_dist_to_hub, axis=1)
         
-        # Dark Zone = Low Activity AND Far from Hub (Isolated)
-        # We normalize distance for scoring
         max_dist = stats['dist_to_hub'].max()
         if max_dist == 0: max_dist = 1
         
@@ -285,18 +280,13 @@ class SpatialEngine:
     @staticmethod
     def optimize_van_deployment(dark_zones_df, n_vans=5):
         """
-        Uses Machine Learning (K-Means) to find the optimal 'Parking Spots' 
-        to cover the maximum number of digital dark zones.
-        
-        Returns:
-            DataFrame containing Lat/Lon coordinates for van deployment.
+        Uses Machine Learning (K-Means) to find the optimal 'Parking Spots'.
         """
         if dark_zones_df.empty or len(dark_zones_df) < n_vans:
             return pd.DataFrame()
             
         coordinates = dark_zones_df[['lat', 'lon']].values
         
-        # Fit K-Means to find centroids of dark zone clusters
         kmeans = KMeans(n_clusters=n_vans, random_state=42, n_init=10)
         kmeans.fit(coordinates)
         
@@ -311,24 +301,12 @@ class SpatialEngine:
     # ==========================================================================
     @staticmethod
     def calculate_spatial_autocorrelation(df):
-        """
-        Determines if activity is Clustered, Dispersed, or Random.
-        Returns a Global Moran's I Index (-1 to +1).
-        +1 = Perfectly Clustered (Highs near Highs) -> Efficient Diffusion
-        -1 = Dispersed (Checkerboard) -> Uneven Development
-        """
-        # This is a statistical simulation as full shapefiles are needed for exact calculation
         if len(df) < 10: return 0.0
         
-        # Simulate based on variance
-        # If variance is very high compared to mean, it suggests clustering (over-dispersion)
         mean_act = df['total_activity'].mean()
         var_act = df['total_activity'].var()
         
-        # Heuristic ratio
         ratio = var_act / (mean_act + 1e-5)
-        
-        # Normalize to -1 to 1 range for simulation
         morans_i = np.tanh((ratio - 1000) / 5000)
         return morans_i
 
@@ -337,23 +315,81 @@ class SpatialEngine:
     # ==========================================================================
     @staticmethod
     def generate_catchment_analysis(df, hub_district):
-        """
-        Calculates the effective 'Service Radius' of a selected hub.
-        Used to see if administrative boundaries match actual human movement patterns.
-        """
         if df.empty or 'district' not in df.columns: return 0.0
         
-        # Get Hub Coords
         hub = df[df['district'] == hub_district]
         if hub.empty: return 0.0
         
-        hub_lat, hub_lon = hub['lat'].mean(), hub['lon'].mean()
-        
-        # Calculate distances of all other points to this hub
-        # (Simplified: assuming all points in DF are relevant service points)
-        
-        # Using Haversine approximation for visual radius
-        # 1 degree lat ~= 111 km
-        radius_proxy = 0.5 # Default 50km
-        
+        radius_proxy = 0.5 
         return radius_proxy
+
+    # ==========================================================================
+    # NEW V9.9 FEATURE: DYNAMIC ISOCHRONE ANALYSIS (TRAVEL TIME)
+    # ==========================================================================
+    @staticmethod
+    def calculate_travel_time_isochrones(df, center_lat, center_lon):
+        """
+        Calculates 'Time-to-Service' instead of just distance.
+        Models terrain friction (Simulated).
+        Returns districts within [30, 60, 90] minute travel bands.
+        """
+        if df.empty or 'lat' not in df.columns: return pd.DataFrame()
+        
+        res = df.copy()
+        
+        # Haversine Distance (approx)
+        def haversine(row):
+            R = 6371  # Earth radius km
+            dlat = math.radians(row['lat'] - center_lat)
+            dlon = math.radians(row['lon'] - center_lon)
+            a = math.sin(dlat/2)**2 + math.cos(math.radians(center_lat)) * \
+                math.cos(math.radians(row['lat'])) * math.sin(dlon/2)**2
+            c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+            return R * c
+            
+        res['distance_km'] = res.apply(haversine, axis=1)
+        
+        # Simulate Travel Speed (Average 40 km/h in rural India)
+        # Apply Penalty for "Remote" areas (simulated by high index)
+        # Assume df index represents remoteness for simulation
+        res['terrain_penalty'] = [random.uniform(0.5, 1.0) for _ in range(len(res))]
+        
+        res['travel_time_mins'] = (res['distance_km'] / (40 * res['terrain_penalty'])) * 60
+        
+        # Banding
+        def categorize_band(t):
+            if t <= 30: return "🟢 30 Mins (Ideal)"
+            if t <= 60: return "🟡 60 Mins (Acceptable)"
+            return "🔴 > 60 Mins (Underserved)"
+            
+        res['service_band'] = res['travel_time_mins'].apply(categorize_band)
+        return res.sort_values('travel_time_mins')
+
+    # ==========================================================================
+    # NEW V9.9 FEATURE: OPERATOR COLLUSION TRIANGULATION
+    # ==========================================================================
+    @staticmethod
+    def detect_operator_collusion_triangles(df):
+        """
+        Finds suspicious triangles of operators who are geographically close
+        but disconnected in the official hierarchy.
+        """
+        if 'operator_id' not in df.columns or 'lat' not in df.columns:
+            return "DATA MISSING"
+            
+        ops = df.groupby('operator_id').agg({'lat':'mean', 'lon':'mean'}).reset_index()
+        if len(ops) < 3: return "INSUFFICIENT DATA"
+        
+        # Distance Matrix
+        coords = ops[['lat', 'lon']].values
+        dist_matrix = squareform(pdist(coords))
+        
+        # Find triangles with side length < 0.005 degrees (~500m)
+        adj = (dist_matrix < 0.005) & (dist_matrix > 0)
+        
+        # Simple triangle count using matrix multiplication (Trace(A^3) / 6)
+        triangles = np.trace(np.linalg.matrix_power(adj.astype(int), 3)) / 6
+        
+        if triangles > 5:
+            return f"HIGH RISK: {int(triangles)} Collusion Triangles detected."
+        return "LOW RISK: Operator network topology is healthy."

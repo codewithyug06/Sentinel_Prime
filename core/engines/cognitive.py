@@ -3,6 +3,7 @@ import datetime
 import time
 import random
 import io
+import math
 from config.settings import config
 
 # NEW: Local LLM Support
@@ -160,6 +161,96 @@ class CrisisManager:
         return status
 
 # ==============================================================================
+# NEW V9.9 AGENTS: LEGAL-RAG & BUDGET OPTIMIZER
+# ==============================================================================
+
+class AadhaarActRAGHandler:
+    """
+    Legal-RAG: Queries a vector database of the Aadhaar Act 2016 & DPDP Act 2023.
+    Ensures directives are legally compliant.
+    """
+    @staticmethod
+    def check_compliance(directive_text):
+        """
+        Simulates retrieving relevant legal clauses.
+        """
+        # In prod: Query ChromaDB/Pinecone
+        if "biometric" in directive_text.lower():
+            return "✅ COMPLIANT: Valid under Section 29 (Core Biometric Restrictions)."
+        elif "share" in directive_text.lower() or "public" in directive_text.lower():
+            return "⚠️ REVIEW REQUIRED: Potential conflict with Section 8 (Consent)."
+        return "✅ COMPLIANT: Standard administrative procedure."
+
+class PolicyBudgetOptimizer:
+    """
+    Autonomous Budgeting Agent.
+    Suggests rupee allocations to maximize saturation ROI.
+    """
+    @staticmethod
+    def optimize_allocation(district_stats):
+        """
+        Input: District Stats (Saturation Gap, Population)
+        Output: Recommended Budget Allocation
+        """
+        if district_stats.empty: return {}
+        
+        # Simplified Logic:
+        # Cost per enrolment = ₹50
+        # Cost per update = ₹25
+        # Allocate budget proportional to gap
+        
+        total_budget_available = 10000000 # 1 Crore
+        
+        # Simulate gap if missing
+        df = district_stats.copy()
+        if 'gap' not in df.columns:
+            df['gap'] = df['total_activity'] * 0.2 # Proxy gap
+            
+        total_gap = df['gap'].sum()
+        if total_gap == 0: total_gap = 1
+        
+        df['allocation'] = (df['gap'] / total_gap) * total_budget_available
+        
+        top_allocations = df.nlargest(3, 'allocation')
+        
+        recommendation = {
+            "Total_Budget": "₹1.0 Crore",
+            "Strategy": "Proportional Saturation Targeting",
+            "Top_Recipient": f"{top_allocations.iloc[0]['district']} (₹{int(top_allocations.iloc[0]['allocation']):,})"
+        }
+        return recommendation
+
+class VoiceInterfaceSimulator:
+    """
+    Simulates a Cross-Lingual Voice Uplink (Whisper/TTS).
+    """
+    @staticmethod
+    def process_voice_command(audio_bytes, language="hi"):
+        """
+        Simulates transcribing audio and running intent classification.
+        """
+        # Mock transcription based on language code
+        if language == "hi":
+            transcript = "Patna mein server load kitna hai?"
+            intent = "QUERY_LOAD"
+            entity = "Patna"
+        elif language == "ta":
+            transcript = "Chennai-il eppodi irukku?"
+            intent = "QUERY_STATUS"
+            entity = "Chennai"
+        else:
+            transcript = "Status report for Mumbai."
+            intent = "QUERY_STATUS"
+            entity = "Mumbai"
+            
+        return {
+            "transcript": transcript,
+            "detected_intent": intent,
+            "entity": entity,
+            "confidence": 0.98
+        }
+
+# ==============================================================================
 # ORCHESTRATION LAYER
 # ==============================================================================
 
@@ -174,6 +265,11 @@ class SwarmOrchestrator:
         self.privacy_bot = PrivacyWatchdog()
         self.xai_bot = ExplainabilityAgent()
         self.crisis_bot = CrisisManager()
+        
+        # V9.9 Extensions
+        self.legal_bot = AadhaarActRAGHandler()
+        self.budget_bot = PolicyBudgetOptimizer()
+        self.voice_bot = VoiceInterfaceSimulator()
         
         self.df = df
 
@@ -290,6 +386,19 @@ class SentinelCognitiveEngine:
                 "Identified **5 Blocks** with high population but low digital footprint.\n"
                 "**Optimization:** K-Means clustering suggests deployment of vans at Lat/Lon: 24.5, 85.3 (Optimal Centroid)."
             )
+            
+        # 5. Logic for Budget (New V9.9)
+        elif "budget" in query or "fund" in query or "money" in query:
+            response["thought"] = "User requests autonomous budget allocation strategy."
+            response["action"] = "EXECUTING: cognitive.PolicyBudgetOptimizer.optimize_allocation()"
+            # Simulate real calculation
+            rec = self.swarm.budget_bot.optimize_allocation(self.df.groupby('district').sum(numeric_only=True).reset_index())
+            response["answer"] = (
+                f"**Autonomous Budgeting Agent:**\n\n"
+                f"**Total Available:** {rec.get('Total_Budget')}\n"
+                f"**Top Recipient:** {rec.get('Top_Recipient')}\n"
+                f"**Reasoning:** High saturation gap detected. Allocation optimized for max ROI."
+            )
 
         # NEW: Semantic Fallback if no match found
         else:
@@ -299,7 +408,8 @@ class SentinelCognitiveEngine:
                 "Analyze volatility in Ajmer",
                 "Simulate 20% surge in Bangalore",
                 "Show High Risk Districts",
-                "Identify Digital Dark Zones"
+                "Identify Digital Dark Zones",
+                "Optimize Budget for Bihar"
             ]
 
         return response

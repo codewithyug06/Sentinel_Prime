@@ -6,7 +6,7 @@ from sklearn.metrics import silhouette_score
 
 class SegmentationEngine:
     """
-    BEHAVIORAL SEGMENTATION ENGINE v3.0 (GOD MODE)
+    BEHAVIORAL SEGMENTATION ENGINE v9.9 (GOD MODE)
     
     CAPABILITIES:
     1. K-Means (Centroid-based Partitioning)
@@ -14,6 +14,7 @@ class SegmentationEngine:
     3. Hierarchical (Agglomerative Connectivity)
     4. Service Saturation Indexing
     5. Policy Action Mapping (Automated Directives)
+    6. Vulnerable Group Micro-Routing (Elderly/Divyang)
     """
     
     @staticmethod
@@ -242,3 +243,39 @@ class SegmentationEngine:
         hotspots['status'] = "🚀 EMERGING HOTSPOT"
         
         return hotspots
+
+    # ==========================================================================
+    # NEW V9.9: VULNERABLE GROUP MICRO-ROUTING (SOCIAL IMPACT)
+    # ==========================================================================
+    @staticmethod
+    def optimize_doorstep_service_routes(df, target_group="elderly"):
+        """
+        Identifies micro-clusters of vulnerable citizens (Age > 80 or Disability)
+        and calculates optimal service routes.
+        
+        Returns: DataFrame with Cluster Centroids for 'Doorstep Service Agents'.
+        """
+        if df.empty or 'age' not in df.columns or 'lat' not in df.columns:
+            return pd.DataFrame()
+            
+        # Filter for Vulnerable Population
+        # Assuming 'disability_flag' exists, else use Age > 80 proxy
+        if target_group == "elderly":
+            vulnerable = df[df['age'] >= 80].copy()
+        else:
+            vulnerable = df.copy() # Fallback
+            
+        if len(vulnerable) < 5: return pd.DataFrame()
+        
+        # Use K-Means to find service centroids
+        coords = vulnerable[['lat', 'lon']].values
+        n_agents = max(1, len(vulnerable) // 50) # 1 Agent per 50 elderly citizens
+        
+        kmeans = KMeans(n_clusters=n_agents, random_state=42)
+        vulnerable['service_cluster'] = kmeans.fit_predict(coords)
+        
+        centroids = pd.DataFrame(kmeans.cluster_centers_, columns=['lat', 'lon'])
+        centroids['service_id'] = [f"DOORSTEP-UNIT-{i+1}" for i in range(len(centroids))]
+        centroids['priority'] = "HIGH (Vulnerable Group)"
+        
+        return centroids

@@ -18,7 +18,7 @@ except ImportError:
     print(">> [WARNING] Legacy 'src' modules not found. Switching to Core Architecture.")
 
 # ==============================================================================
-# V9.8 AEGIS CORE IMPORTS (GOD MODE)
+# V9.9 AEGIS CORE IMPORTS (GOD MODE)
 # ==============================================================================
 # Ensure system path can find the new modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -29,6 +29,7 @@ from core.analytics.forensics import ForensicEngine
 from core.analytics.segmentation import SegmentationEngine
 from core.engines.spatial import SpatialEngine, GraphNeuralNetwork
 from core.engines.cognitive import SentinelCognitiveEngine, SwarmOrchestrator
+from core.engines.causal import CausalEngine
 from core.models.lstm import ForecastEngine, SovereignForecastEngine
 
 # ==============================================================================
@@ -92,16 +93,17 @@ def main():
     print("==================================================")
 
 # ==============================================================================
-# 2. NEW GOD-MODE FUNCTION (V9.8 AEGIS PROTOCOL)
+# 2. NEW GOD-MODE FUNCTION (V9.9 AEGIS PROTOCOL)
 # ==============================================================================
 def run_aegis_protocol():
     """
-    Executes the Advanced V9.8 Sovereign Architecture.
-    Includes: Privacy Watchdog, GNN Contagion, Dark Zones, DBT Wargaming.
+    Executes the Advanced V9.9 Sovereign Architecture.
+    Includes: Privacy Watchdog, GNN Contagion, Dark Zones, DBT Wargaming,
+    Federated Learning, ZKP, and Adversarial Robustness.
     """
     print("\n\n")
     print("██████████████████████████████████████████████████")
-    print("█  SENTINEL PRIME | AEGIS COMMAND | V9.8.0 ALPHA █")
+    print("█  SENTINEL PRIME | AEGIS COMMAND | V9.9.0 ALPHA █")
     print("█  SOVEREIGN DIGITAL TWIN ACTIVATED              █")
     print("██████████████████████████████████████████████████")
     time.sleep(1)
@@ -122,18 +124,29 @@ def run_aegis_protocol():
         print("   > 🛑 HALTING PROTOCOL: DATA LEAK DETECTED.")
         return
 
-    # 2. ADVANCED FORENSICS (WHIPPLE + BENFORD + MYERS)
+    # NEW: Federated Learning Status
+    print("   > FEDERATED LEARNING PROTOCOL: INITIATED")
+    # Simulate aggregation of 5 local nodes
+    fed_status = engine.simulate_federated_aggregator([{"w": 0.5} for _ in range(5)])
+    print(f"   > GLOBAL MODEL STATUS: {fed_status['status']} (Privacy Preserved)")
+
+    # 2. ADVANCED FORENSICS (WHIPPLE + BENFORD + MYERS + ZKP)
     print("\n[AEGIS-2] EXECUTING DEEP FORENSIC SCAN...")
     integrity_score = ForensicEngine.generate_integrity_scorecard(df)
     whipple = ForensicEngine.calculate_whipple(df)
     myers = ForensicEngine.calculate_myers_index(df)
-    gender_skew = ForensicEngine.assess_gender_parity(df)
     
     print(f"   > GLOBAL DATA TRUST SCORE: {integrity_score:.2f}/100")
-    print(f"   > WHIPPLE'S INDEX (Age Heaping): {whipple:.2f} " + 
-          ("(Rough Data)" if whipple > 125 else "(Accurate)"))
+    print(f"   > WHIPPLE'S INDEX (Age Heaping): {whipple:.2f}")
     print(f"   > MYER'S BLENDED INDEX: {myers:.2f} (Digit Preference)")
-    print(f"   > GENDER PARITY SKEW: {gender_skew:.2f}%")
+    
+    # NEW: Zero-Knowledge Proof
+    zkp_df = ForensicEngine.simulate_zkp_validation(df)
+    print(f"   > ZKP CRYPTOGRAPHIC VALIDATION: {len(zkp_df)} Proofs Verified on Ledger.")
+    
+    # NEW: Adversarial Robustness
+    robustness = ForensicEngine.run_adversarial_poisoning_test(df)
+    print(f"   > ADVERSARIAL ROBUSTNESS SCORE: {robustness*100:.1f}% (Resilience to Poisoning)")
     
     # 3. SPATIAL INTELLIGENCE & GNN CONTAGION
     print("\n[AEGIS-3] BUILDING MIGRATION GRAPH & GNN SIMULATION...")
@@ -157,7 +170,7 @@ def run_aegis_protocol():
         print("   > OPTIMAL VAN DEPLOYMENT COORDINATES (K-Means Centroids):")
         print(deployments[['van_id', 'lat', 'lon']].to_string(index=False))
 
-    # 5. WARGAME: DBT MEGA-LAUNCH SIMULATION
+    # 5. WARGAME: DBT MEGA-LAUNCH & DISASTER SIMULATION
     print("\n[AEGIS-5] INITIATING WARGAME: 'PM-KISAN DISBURSEMENT'...")
     forecaster = ForecastEngine(df)
     simulation = forecaster.simulate_dbt_mega_launch(days=15)
@@ -167,7 +180,17 @@ def run_aegis_protocol():
     
     status = swarm.crisis_bot.evaluate_shock_resilience(peak_load)
     print(f"   > INFRASTRUCTURE STATUS: {status['condition']}")
-    print(f"   > STRATEGIC DIRECTIVE: {status['message']}")
+    
+    # NEW: Multi-Agent Disaster Sim
+    print("\n[AEGIS-5.1] RUNNING MULTI-AGENT DISASTER SIMULATION (FLOOD)...")
+    disaster_res = CausalEngine.run_multi_agent_disaster_sim(n_agents=5000, resources=1000)
+    print(f"   > SCENARIO: {disaster_res['Scenario']}")
+    print(f"   > COLLAPSE PROBABILITY: {disaster_res['Collapse_Probability']}")
+    print(f"   > STRATEGY: {disaster_res['Strategic_Advice']}")
+    
+    # NEW: Shadow Vault Divergence
+    drift = CausalEngine.compute_shadow_vault_divergence(df)
+    print(f"   > SHADOW DB DIVERGENCE: {drift['Data_Latency_Drift']} (Data Currency Gap)")
 
     # 6. EXECUTIVE REPORT GENERATION
     print("\n[AEGIS-6] SYNTHESIZING CLASSIFIED SITREP...")

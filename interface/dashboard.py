@@ -79,10 +79,6 @@ theme_colors = {
         'glow': '0 0 25px rgba(255, 51, 51, 0.4)',
         'font': 'Black Ops One, cursive'
     },
-    # Legacy fallbacks mapped to new structure
-    'GOD_MODE': {'bg': '#000000', 'primary': '#00FF9D', 'text': '#FFFFFF', 'accent': '#FF00FF', 'card_bg': 'rgba(0,20,10,0.6)', 'border': '1px solid #00FF9D', 'glow': '0 0 10px #00FF9D', 'font': 'Orbitron'},
-    'STEALTH': {'bg': '#050905', 'primary': '#44FF44', 'text': '#AAFFAA', 'accent': '#004400', 'card_bg': 'rgba(5,20,5,0.8)', 'border': '1px solid #44FF44', 'glow': '0 0 5px #44FF44', 'font': 'Rajdhani'},
-    'ANALYSIS': {'bg': '#0B0C15', 'primary': '#00AAFF', 'text': '#DDEEFF', 'accent': '#FF4444', 'card_bg': 'rgba(15,20,35,0.7)', 'border': '1px solid #00AAFF', 'glow': '0 0 10px #00AAFF', 'font': 'Rajdhani'}
 }
 
 current_theme = theme_colors.get(st.session_state['theme_mode'], theme_colors['CYBER_WARFARE'])
@@ -116,9 +112,21 @@ def inject_ultra_css():
             font-family: var(--font-main);
         }}
         
+        /* REMOVE TOP PADDING & DEFAULT ELEMENTS */
+        .block-container {{
+            padding-top: 1rem;
+            padding-bottom: 5rem;
+        }}
+        #MainMenu {{visibility: hidden;}}
+        footer {{visibility: hidden;}}
+        header {{visibility: hidden;}}
+        .stDeployButton {{display:none;}}
+        [data-testid="stToolbar"] {{visibility: hidden !important;}}
+        [data-testid="stDecoration"] {{display:none;}}
+        
         /* 2. CUSTOM COMPONENTS */
         
-        /* HUD Cards */
+        /* HUD Cards - Applied to Metrics primarily */
         .hud-card {{
             background: var(--card-bg);
             border: 1px solid var(--primary);
@@ -242,11 +250,6 @@ def inject_ultra_css():
             border: 1px solid var(--primary);
             box-shadow: inset 0 0 20px rgba(0,255,65,0.1);
         }}
-
-        /* HIDE DEFAULT CHROME */
-        #MainMenu {{visibility: hidden;}}
-        footer {{visibility: hidden;}}
-        header {{visibility: hidden;}}
         
         /* ANIMATIONS */
         @keyframes pulse {{
@@ -391,7 +394,7 @@ def render_header_hero(title, sector):
         </div>
         <div style="text-align: right;">
             <div style="font-family: 'Orbitron'; font-size: 2rem; color: {current_theme['text']};">SENTINEL<span style="color:{current_theme['primary']}">PRIME</span></div>
-            <div style="font-size: 0.8rem; color: #666;">SYS.VER.9.8.0 (AEGIS)</div>
+            <div style="font-size: 0.8rem; color: #666;">SYS.VER.9.9.0 (GOD-MODE)</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -571,11 +574,14 @@ with tabs[0]:
     col_map, col_stat = st.columns([3, 1])
     
     with col_map:
-        st.markdown(f"<div class='hud-card'>", unsafe_allow_html=True)
+        # CLEANED: Removed outer div wrapper that caused unwanted box
         st.markdown(f"<h3 style='margin-top:0;'>🌐 3D BALLISTIC TRACKER</h3>", unsafe_allow_html=True)
         
         # New V9.8 Toggle for Digital Dark Zones
-        show_dark_zones = st.toggle("🛰️ SHOW DIGITAL DARK ZONES (K-Means Optimization)", value=False)
+        col_ctrl1, col_ctrl2 = st.columns(2)
+        show_dark_zones = col_ctrl1.toggle("🛰️ SHOW DIGITAL DARK ZONES (K-Means Optimization)", value=False)
+        # New V9.9 Toggle for Isochrones
+        show_isochrones = col_ctrl2.toggle("⏱️ SHOW ISOCHRONE TRAVEL TIME (30/60 Mins)", value=False)
         
         layers = []
         
@@ -640,10 +646,10 @@ with tabs[0]:
             initial_view_state=pdk.ViewState(latitude=22, longitude=79, zoom=3.8, pitch=55, bearing=15),
             layers=layers,
             tooltip={"text": "Activity Zone"}
-        ), use_container_width=True) # FIXED WARNING
-        st.markdown("</div>", unsafe_allow_html=True)
+        ), use_container_width=True) 
         
     with col_stat:
+        # Keeping this card as it only wraps text/tables, which is safer
         st.markdown(f"<div class='hud-card'>", unsafe_allow_html=True)
         st.markdown(f"<h4 style='margin-top:0; color: {current_theme['text']}'>📡 FEED</h4>", unsafe_allow_html=True)
         # Use simple st.dataframe without deprecated argument
@@ -655,7 +661,7 @@ with tabs[0]:
 # TAB 2: TITAN PREDICTION
 # ------------------------------------------------------------------------------
 with tabs[1]:
-    st.markdown(f"<div class='hud-card'>", unsafe_allow_html=True)
+    # CLEANED: Removed outer div wrapper that caused unwanted box
     
     # Header layout
     h1, h2 = st.columns([4, 1])
@@ -676,7 +682,7 @@ with tabs[1]:
                         x=forecast['Date'].tolist() + forecast['Date'].tolist()[::-1],
                         y=forecast['Titan_Upper'].tolist() + forecast['Titan_Lower'].tolist()[::-1],
                         fill='toself', fillcolor='rgba(0, 255, 157, 0.05)', line=dict(color='rgba(255,255,255,0)'),
-                        name='PROBABILITY FIELD (95%)'
+                        name='BAYESIAN UNCERTAINTY (95%)'
                     ))
                 
                 # Main Prediction
@@ -720,14 +726,12 @@ with tabs[1]:
                     st.bar_chart(feats, color=current_theme['primary'])
     else:
         st.info("INSUFFICIENT TEMPORAL DATA FOR DEEP LEARNING.")
-    
-    st.markdown("</div>", unsafe_allow_html=True)
 
 # ------------------------------------------------------------------------------
 # TAB 3: DEEP FORENSICS
 # ------------------------------------------------------------------------------
 with tabs[2]:
-    st.markdown(f"<div class='hud-card'>", unsafe_allow_html=True)
+    # CLEANED: Removed outer div wrapper that caused unwanted box
     st.markdown(f"<h3 style='margin-top:0; color: {current_theme['accent']}'>🧬 ANOMALY VECTOR ANALYSIS</h3>", unsafe_allow_html=True)
     
     col_iso, col_ben = st.columns(2)
@@ -774,8 +778,14 @@ with tabs[2]:
                     st.dataframe(risk_df.sort_values('Contagion_Risk', ascending=False).head(10), use_container_width=True)
                 else:
                     st.warning("Insufficient Migration Data for GNN.")
-                    
-    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # NEW V9.9: OPERATOR COLLUSION & ZKP
+    st.markdown("#### 🕵️ OPERATOR COLLUSION DETECTION")
+    collusion_res = ForensicEngine.detect_operator_collusion(active_df)
+    if "HIGH RISK" in collusion_res:
+        st.error(collusion_res)
+    else:
+        st.success(collusion_res)
 
 # ------------------------------------------------------------------------------
 # TAB 4: SWARM AGENT
@@ -784,73 +794,96 @@ with tabs[3]:
     c1, c2 = st.columns([2, 1])
     
     with c1:
-        st.markdown(f"<div class='hud-card' style='height: 600px; display: flex; flex-direction: column;'>", unsafe_allow_html=True)
-        st.markdown(f"<h3 style='margin-top:0; color: {current_theme['primary']}'>💬 SECURE SWARM UPLINK</h3>", unsafe_allow_html=True)
-        
-        # Chat container for history
-        chat_container = st.container(height=350)
-        
-        if "messages" not in st.session_state:
-            st.session_state.messages = [{"role": "assistant", "content": "Sentinel Node Online. Awaiting Directives."}]
+        # CLEANED: Replaced wrapper with container
+        with st.container():
+            st.markdown(f"<h3 style='margin-top:0; color: {current_theme['primary']}'>💬 SECURE SWARM UPLINK</h3>", unsafe_allow_html=True)
+            
+            # New V9.9: Toggle for Voice/Text
+            mode = st.radio("INTERFACE MODE", ["TEXT ENCRYPTED", "VOICE UPLINK"], horizontal=True, label_visibility="collapsed")
+            
+            # Chat container for history
+            chat_container = st.container(height=350)
+            
+            if "messages" not in st.session_state:
+                st.session_state.messages = [{"role": "assistant", "content": "Sentinel Node Online. Awaiting Directives."}]
 
-        with chat_container:
-            for msg in st.session_state.messages:
-                with st.chat_message(msg["role"]):
-                    st.markdown(f"<span style='font-family: Roboto Mono'>{msg['content']}</span>", unsafe_allow_html=True)
+            with chat_container:
+                for msg in st.session_state.messages:
+                    with st.chat_message(msg["role"]):
+                        st.markdown(f"<span style='font-family: Roboto Mono'>{msg['content']}</span>", unsafe_allow_html=True)
 
-        # Quick Action Buttons
-        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-        if "suggestions" in st.session_state:
-            cols = st.columns(3)
-            for i, suggestion in enumerate(st.session_state['suggestions']):
-                if cols[i].button(suggestion, key=f"sugg_{i}"):
-                    st.toast(f"Swarm Protocol Initiated: {suggestion}")
+            if mode == "TEXT ENCRYPTED":
+                # Quick Action Buttons
+                st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+                if "suggestions" in st.session_state:
+                    cols = st.columns(3)
+                    for i, suggestion in enumerate(st.session_state['suggestions']):
+                        if cols[i].button(suggestion, key=f"sugg_{i}"):
+                            st.toast(f"Swarm Protocol Initiated: {suggestion}")
 
-        # Input
-        if prompt := st.chat_input("TRANSMIT DIRECTIVE..."):
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
+                # Input
+                if prompt := st.chat_input("TRANSMIT DIRECTIVE..."):
+                    st.session_state.messages.append({"role": "user", "content": prompt})
+                    with st.chat_message("user"):
+                        st.markdown(prompt)
 
-            with st.chat_message("assistant"):
-                with st.spinner("DECRYPTING & ANALYZING..."):
-                    try:
-                        # V8.0 Swarm Routing
-                        if "scan" in prompt or "audit" in prompt:
-                            response_text = swarm.auditor.run_audit(active_df)
-                            thought_text = "Routing to Auditor Agent..."
-                            action_text = "Running Forensic Scan"
-                        elif "strategy" in prompt or "plan" in prompt:
-                            response_text = swarm.strategist.devise_strategy(threat_level)
-                            thought_text = "Routing to Strategist Agent..."
-                            action_text = "Synthesizing Policy Directive"
-                        elif "dark" in prompt or "zone" in prompt:
-                            # Direct call to trigger dark zone analysis logic via chat
-                            response = cognitive_engine.react_agent_query(prompt)
-                            response_text = response['answer']
-                            thought_text = response['thought']
-                            action_text = response['action']
-                        else:
-                            # Default Cognitive Engine
-                            response = cognitive_engine.react_agent_query(prompt)
-                            response_text = response['answer']
-                            thought_text = response['thought']
-                            action_text = response['action']
-                            if "suggestions" in response:
-                                st.session_state['suggestions'] = response['suggestions']
+                    with st.chat_message("assistant"):
+                        with st.spinner("DECRYPTING & ANALYZING..."):
+                            try:
+                                # V8.0 Swarm Routing
+                                if "scan" in prompt or "audit" in prompt:
+                                    response_text = swarm.auditor.run_audit(active_df)
+                                    thought_text = "Routing to Auditor Agent..."
+                                    action_text = "Running Forensic Scan"
+                                elif "budget" in prompt:
+                                    # New V9.9 Budget call
+                                    response = cognitive_engine.react_agent_query(prompt)
+                                    response_text = response['answer']
+                                    thought_text = response['thought']
+                                    action_text = response['action']
+                                elif "strategy" in prompt or "plan" in prompt:
+                                    response_text = swarm.strategist.devise_strategy(threat_level)
+                                    thought_text = "Routing to Strategist Agent..."
+                                    action_text = "Synthesizing Policy Directive"
+                                elif "dark" in prompt or "zone" in prompt:
+                                    # Direct call to trigger dark zone analysis logic via chat
+                                    response = cognitive_engine.react_agent_query(prompt)
+                                    response_text = response['answer']
+                                    thought_text = response['thought']
+                                    action_text = response['action']
+                                else:
+                                    # Default Cognitive Engine + Legal RAG check
+                                    # Check compliance first
+                                    compliance = swarm.legal_bot.check_compliance(prompt)
+                                    
+                                    response = cognitive_engine.react_agent_query(prompt)
+                                    response_text = f"{compliance}\n\n{response['answer']}"
+                                    thought_text = response['thought']
+                                    action_text = response['action']
+                                    if "suggestions" in response:
+                                        st.session_state['suggestions'] = response['suggestions']
 
-                        st.markdown(f"""
-                        <div style="font-family: Share Tech Mono; color: #8899AA; font-size: 0.9em; border-left: 2px solid {current_theme['primary']}; padding-left: 10px; margin-bottom: 10px; background: rgba(0,0,0,0.5);">
-                        > THOUGHT: {thought_text}<br>
-                        > ACTION: {action_text}
-                        </div>
-                        """, unsafe_allow_html=True)
-                        st.markdown(response_text)
-                        st.session_state.messages.append({"role": "assistant", "content": response_text})
-                            
-                    except Exception as e:
-                        st.error(f"NEURAL LINK FAILURE: {e}")
-        st.markdown("</div>", unsafe_allow_html=True)
+                                st.markdown(f"""
+                                <div style="font-family: Share Tech Mono; color: #8899AA; font-size: 0.9em; border-left: 2px solid {current_theme['primary']}; padding-left: 10px; margin-bottom: 10px; background: rgba(0,0,0,0.5);">
+                                > THOUGHT: {thought_text}<br>
+                                > ACTION: {action_text}
+                                </div>
+                                """, unsafe_allow_html=True)
+                                st.markdown(response_text)
+                                st.session_state.messages.append({"role": "assistant", "content": response_text})
+                                    
+                            except Exception as e:
+                                st.error(f"NEURAL LINK FAILURE: {e}")
+                                
+            else: # VOICE MODE
+                st.info("🎤 VOICE UPLINK ACTIVE. LISTENING FOR HINDI/TAMIL COMMANDS...")
+                if st.button("🔴 RECORD COMMAND"):
+                    # Simulate processing
+                    with st.spinner("TRANSCRIBING AUDIO STREAM..."):
+                        time.sleep(2) # Fake processing delay
+                        res = swarm.voice_bot.process_voice_command(None, language="hi")
+                        st.success(f"DETECTED: {res['transcript']}")
+                        st.markdown(f"**INTENT:** {res['detected_intent']} (Confidence: {res['confidence']})")
 
     with c2:
         st.markdown(f"<div class='hud-card'>", unsafe_allow_html=True)
@@ -882,7 +915,7 @@ with tabs[3]:
 # TAB 5 & 6: CAUSAL & SIMULATOR
 # ------------------------------------------------------------------------------
 with tabs[4]:
-    st.markdown(f"<div class='hud-card'>", unsafe_allow_html=True)
+    # CLEANED: Removed outer div wrapper that caused unwanted box
     st.markdown("### 📉 CAUSAL ROOT ANALYSIS")
     causal_df = run_causal_inference(active_df)
     
@@ -897,10 +930,9 @@ with tabs[4]:
                             hole=0.6)
                 fig = apply_god_mode_theme(fig)
                 st.plotly_chart(fig, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
 
 with tabs[5]:
-    st.markdown(f"<div class='hud-card'>", unsafe_allow_html=True)
+    # CLEANED: Removed outer div wrapper that caused unwanted box
     st.markdown("### 🔮 INFRASTRUCTURE WARGAMES")
     c1, c2 = st.columns([1, 3])
     with c1:
@@ -917,6 +949,11 @@ with tabs[5]:
                     policy = "DBT Launch"
                     surge = 30 # Implicit surge
                     execute_sim = True
+                
+                st.markdown("#### DISASTER RECOVERY")
+                if st.form_submit_button("🌊 FLOOD RESPONSE SIMULATION"):
+                    policy = "FLOOD"
+                    execute_sim = True
             
     with c2:
         if execute_sim:
@@ -925,6 +962,13 @@ with tabs[5]:
             # Use appropriate simulation logic
             if policy == "DBT Launch":
                 forecast = forecaster.simulate_dbt_mega_launch(days=30)
+            elif policy == "FLOOD":
+                # New V9.9 Flood Logic
+                res = CausalEngine.run_multi_agent_disaster_sim()
+                st.warning(f"SCENARIO ACTIVE: {res['Scenario']}")
+                st.error(f"SYSTEM STRESS: {res['System_Stress']}")
+                st.info(f"ADVICE: {res['Strategic_Advice']}")
+                forecast = pd.DataFrame() # No chart for flood yet
             else:
                 forecast = forecaster.calculate_resource_demand(days=60)
             
@@ -952,14 +996,12 @@ with tabs[5]:
                     st.error(f"💥 {status['condition']}: {status['message']}")
                 else:
                     st.success("✅ INFRASTRUCTURE RESILIENT")
-                    
-    st.markdown("</div>", unsafe_allow_html=True)
 
 # ------------------------------------------------------------------------------
 # TAB 7: VISUAL STUDIO (PERFORMANCE OPTIMIZED & FIXED)
 # ------------------------------------------------------------------------------
 with tabs[6]:
-    st.markdown(f"<div class='hud-card'>", unsafe_allow_html=True)
+    # CLEANED: Removed outer div wrapper that caused unwanted box
     st.markdown("### 🎨 VISUAL STUDIO | CUSTOM ANALYTICS")
     
     vs_c1, vs_c2 = st.columns([1, 3])
@@ -1015,8 +1057,6 @@ with tabs[6]:
         target_cluster = st.selectbox("TARGET BEHAVIORAL CLUSTER", seg_df['cluster_label'].unique())
         drill_data = seg_df[seg_df['cluster_label'] == target_cluster]
         st.dataframe(drill_data.head(20), hide_index=True, use_container_width=True)
-    
-    st.markdown("</div>", unsafe_allow_html=True)
 
 # ==============================================================================
 # 7. GLOBAL FOOTER (NEWS TICKER)
