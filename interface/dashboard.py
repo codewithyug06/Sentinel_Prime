@@ -391,7 +391,7 @@ def render_header_hero(title, sector):
         </div>
         <div style="text-align: right;">
             <div style="font-family: 'Orbitron'; font-size: 2rem; color: {current_theme['text']};">SENTINEL<span style="color:{current_theme['primary']}">PRIME</span></div>
-            <div style="font-size: 0.8rem; color: #666;">SYS.VER.9.7.0 (AEGIS)</div>
+            <div style="font-size: 0.8rem; color: #666;">SYS.VER.9.8.0 (AEGIS)</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -478,6 +478,15 @@ with st.sidebar:
     
     st.markdown("---")
     
+    # NEW V9.8: PRIVACY WATCHDOG IN SIDEBAR
+    st.markdown("### 🛡️ SOVEREIGN GUARD")
+    with st.container():
+        privacy_status = swarm.privacy_bot.verify_sanitization(active_df)
+        if "ACTIVE" in privacy_status:
+            st.success(f"{privacy_status}")
+        else:
+            st.error(f"{privacy_status}")
+
     # NEW: SYSTEM MONITOR IN SIDEBAR
     st.markdown("### 🖥️ SYSTEM MONITOR")
     with st.container():
@@ -565,7 +574,12 @@ with tabs[0]:
         st.markdown(f"<div class='hud-card'>", unsafe_allow_html=True)
         st.markdown(f"<h3 style='margin-top:0;'>🌐 3D BALLISTIC TRACKER</h3>", unsafe_allow_html=True)
         
-        # Map Logic
+        # New V9.8 Toggle for Digital Dark Zones
+        show_dark_zones = st.toggle("🛰️ SHOW DIGITAL DARK ZONES (K-Means Optimization)", value=False)
+        
+        layers = []
+        
+        # 1. Base Map (Hexagons)
         sample_size = 2000 if perf_mode else 10000
         map_df = get_cached_hex_map(active_df, sample_size)
         
@@ -580,10 +594,10 @@ with tabs[0]:
             get_fill_color=[0, 255, 157, 160],
             auto_highlight=True,
         )
+        layers.append(hex_layer)
         
+        # 2. Migration Arcs
         arc_data = get_cached_spatial_arcs(active_df)
-        layers = [hex_layer]
-        
         if not arc_data.empty:
             arc_layer = pdk.Layer(
                 "ArcLayer",
@@ -597,6 +611,29 @@ with tabs[0]:
                 get_tilt=15,
             )
             layers.append(arc_layer)
+            
+        # 3. Dark Zones Layer (New V9.8)
+        if show_dark_zones:
+            dark_df = SpatialEngine.identify_digital_dark_zones(active_df)
+            if not dark_df.empty:
+                # Plot deployment spots
+                van_spots = SpatialEngine.optimize_van_deployment(dark_df)
+                if not van_spots.empty:
+                    van_layer = pdk.Layer(
+                        "ScatterplotLayer",
+                        van_spots,
+                        get_position=["lon", "lat"],
+                        get_color=[255, 255, 0, 255], # Yellow for Vans
+                        get_radius=10000,
+                        pickable=True,
+                        opacity=0.8,
+                        stroked=True,
+                        filled=True,
+                        radius_min_pixels=5,
+                        radius_max_pixels=20,
+                    )
+                    layers.append(van_layer)
+                    st.toast(f"DEPLOYMENT OPTIMIZED: {len(van_spots)} Van Coordinates Calculated.")
 
         st.pydeck_chart(pdk.Deck(
             map_style="mapbox://styles/mapbox/dark-v10",
@@ -673,9 +710,13 @@ with tabs[1]:
                 
                 if xai_active:
                     st.markdown("---")
-                    st.caption("NEURAL WEIGHTS (SHAP)")
+                    st.caption("NEURAL EXPLAINABILITY (XAI)")
                     tmp_engine = AdvancedForecastEngine(active_df)
                     feats = tmp_engine.get_feature_importance()
+                    
+                    # New V9.8: Explainability Narrative
+                    narrative = swarm.xai_bot.interpret_forecast(feats)
+                    st.info(narrative)
                     st.bar_chart(feats, color=current_theme['primary'])
     else:
         st.info("INSUFFICIENT TEMPORAL DATA FOR DEEP LEARNING.")
@@ -783,6 +824,12 @@ with tabs[3]:
                             response_text = swarm.strategist.devise_strategy(threat_level)
                             thought_text = "Routing to Strategist Agent..."
                             action_text = "Synthesizing Policy Directive"
+                        elif "dark" in prompt or "zone" in prompt:
+                            # Direct call to trigger dark zone analysis logic via chat
+                            response = cognitive_engine.react_agent_query(prompt)
+                            response_text = response['answer']
+                            thought_text = response['thought']
+                            action_text = response['action']
                         else:
                             # Default Cognitive Engine
                             response = cognitive_engine.react_agent_query(prompt)
@@ -897,10 +944,15 @@ with tabs[5]:
                 
                 # Risk Assessment
                 gap = forecast['Simulated_Load'].max() - forecast.get('Upper_Bound', forecast['Predicted_Load']*1.2).max()
-                if gap > 0:
-                    st.warning(f"💥 COLLAPSE RISK CONFIRMED: {int(gap):,} excess transactions expected.")
+                
+                # New V9.8: Crisis Manager Check
+                status = swarm.crisis_bot.evaluate_shock_resilience(forecast.get('Utilization', pd.Series([0])).max())
+                
+                if status['condition'] != "STABLE":
+                    st.error(f"💥 {status['condition']}: {status['message']}")
                 else:
                     st.success("✅ INFRASTRUCTURE RESILIENT")
+                    
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ------------------------------------------------------------------------------

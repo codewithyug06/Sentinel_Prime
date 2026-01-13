@@ -134,3 +134,64 @@ class IngestionEngine:
                 return df
             except: return pd.DataFrame()
         return pd.DataFrame()
+
+    # ==========================================================================
+    # NEW METHODS (TRAI INTEGRATION & UNIQUE SELECTION)
+    # ==========================================================================
+
+    def integrate_telecom_data(self, master_df, telecom_df):
+        """
+        Merges Aadhaar Activity Data with TRAI Teledensity Data.
+        Performs a robust Left Join on 'district' with string normalization.
+        Used for 'Digital Dark Zone' analysis in Spatial Engine.
+        """
+        if master_df.empty or telecom_df.empty:
+            return master_df
+
+        # 1. Normalize Keys (Lowercase, strip, remove non-alpha chars for matching)
+        master_df['join_key'] = master_df['district'].astype(str).str.lower().str.strip().str.replace(r'[^a-z]', '', regex=True)
+        telecom_df['join_key'] = telecom_df['district'].astype(str).str.lower().str.strip().str.replace(r'[^a-z]', '', regex=True)
+
+        # 2. Merge
+        # We only want to add 'teledensity' and maybe 'service_provider' info
+        cols_to_use = ['join_key'] + [c for c in telecom_df.columns if c not in ['district', 'join_key']]
+        merged_df = pd.merge(master_df, telecom_df[cols_to_use], on='join_key', how='left')
+        
+        # 3. Cleanup
+        merged_df = merged_df.drop(columns=['join_key'])
+        
+        # Fill missing teledensity with median (Imputation to avoid breaking Forensics)
+        if 'teledensity' in merged_df.columns:
+            merged_df['teledensity'] = merged_df['teledensity'].fillna(merged_df['teledensity'].median())
+            
+        return merged_df
+
+    def get_unique_hierarchy(self, df):
+        """
+        Extracts a clean State -> District dictionary for UI Dropdowns.
+        Ensures 0 duplicates, 0 NaNs, and 0 Numeric Noise ("10000").
+        """
+        if df.empty: return {}
+        
+        hierarchy = {}
+        
+        # Get unique states
+        states = sorted(df['state'].dropna().unique())
+        
+        for state in states:
+            # Skip invalid states
+            if str(state).strip() == "" or str(state).lower() == "nan" or str(state).isdigit():
+                continue
+                
+            districts = sorted(df[df['state'] == state]['district'].dropna().unique())
+            
+            # Clean districts
+            clean_districts = [
+                d for d in districts 
+                if str(d).strip() != "" and str(d).lower() != "nan" and not str(d).isdigit()
+            ]
+            
+            if clean_districts:
+                hierarchy[state] = clean_districts
+                
+        return hierarchy

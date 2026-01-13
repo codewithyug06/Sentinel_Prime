@@ -12,6 +12,7 @@ class CausalEngine:
     - Structural Causal Models (SCM)
     - Counterfactual Simulation (What-If Analysis)
     - Granger Causality Tests (Temporal Precedence)
+    - Policy Shock Propagation (System-Wide Stress Test)
     """
     
     @staticmethod
@@ -163,3 +164,49 @@ class CausalEngine:
             return f"POSITIVE CAUSALITY: Migration surges precede activity spikes by 3 days (Corr: {corr:.2f})."
         else:
             return "NO TEMPORAL CAUSALITY: Spikes are likely instantaneous or external."
+
+    # ==========================================================================
+    # NEW V9.8: POLICY SHOCK PROPAGATION (SYSTEM-WIDE STRESS TEST)
+    # ==========================================================================
+    @staticmethod
+    def simulate_policy_shock(policy_type, intensity=1.5):
+        """
+        Models how a policy decision ripples through the causal graph.
+        This is for the 'Wargame' engine to calculate 2nd and 3rd order effects.
+        
+        Args:
+            policy_type: "MANDATORY_UPDATE" | "OFFLINE_MODE" | "DBT_LINKAGE"
+            intensity: Multiplier for the shock (1.5 = 50% increase)
+        """
+        impact_report = {}
+        
+        if policy_type == "MANDATORY_UPDATE":
+            # Direct Effect: Request Volume spikes
+            vol_impact = intensity * 100 
+            # Second Order: Server Load increases non-linearly
+            load_impact = (intensity ** 1.2) * 100
+            # Third Order: Latency penalty
+            latency_impact = (intensity ** 2.5) * 20 # Exponential degradation
+            
+            impact_report = {
+                "Policy": "Mandatory Biometric Update",
+                "Primary_Effect": f"Request Volume +{int(vol_impact-100)}%",
+                "Secondary_Effect": f"Server Load +{int(load_impact-100)}%",
+                "Tertiary_Effect": f"Latency Spike +{int(latency_impact)}ms (CRITICAL)",
+                "Recommendation": "Stagger rollout by PIN Code to dampen shock."
+            }
+            
+        elif policy_type == "OFFLINE_MODE":
+            # Direct Effect: Sync delay increases
+            sync_impact = intensity * 100
+            # Second Order: Real-time visibility drops
+            vis_impact = -1 * (intensity * 20)
+            
+            impact_report = {
+                "Policy": "Emergency Offline Mode",
+                "Primary_Effect": "Data Sync Delay +4 Hours",
+                "Secondary_Effect": f"Real-time Visibility {int(vis_impact)}%",
+                "Recommendation": "Acceptable for disaster zones only."
+            }
+            
+        return impact_report

@@ -6,9 +6,13 @@ from config.settings import config
 
 class ForensicEngine:
     """
-    ADVANCED FORENSIC SUITE v9.7 (GOD MODE)
-    Includes: Whipple (UN Standard), Benford, Digit Fingerprint, ISOLATION FOREST,
-    and Multi-Dataset Correlation Logic.
+    ADVANCED FORENSIC SUITE v9.8 (OMNI-SURVEILLANCE)
+    
+    CAPABILITIES:
+    1. Statistical Forensics: Benford's Law, Digit Fingerprinting
+    2. Demographic Forensics: Whipple's Index, Myer's Blended Index, Gender Parity
+    3. AI Forensics: High-Dimensional Isolation Forests (Unsupervised)
+    4. Infrastructure Forensics: Teledensity Correlation
     """
     
     @staticmethod
@@ -38,6 +42,62 @@ class ForensicEngine:
         whipple_index = (heaping_count / (total_pop / 5)) * 100
         
         return whipple_index
+
+    # ==========================================================================
+    # NEW V9.8 FEATURE: MYER'S BLENDED INDEX (DIGIT PREFERENCE 0-9)
+    # ==========================================================================
+    @staticmethod
+    def calculate_myers_index(df):
+        """
+        A more comprehensive test than Whipple. 
+        Detects preference for ANY digit (0-9) in age data.
+        Returns a score: 0 (Perfect) to 90 (Extreme Distortion).
+        """
+        if 'age' not in df.columns: return 0.0
+        
+        # Range 10-79 is standard for Myers
+        target_ages = df[(df['age'] >= 10) & (df['age'] <= 79)]
+        if target_ages.empty: return 0.0
+        
+        counts = {i: 0 for i in range(10)}
+        for _, row in target_ages.iterrows():
+            digit = int(row['age']) % 10
+            counts[digit] += 1
+            
+        total = sum(counts.values())
+        if total == 0: return 0.0
+        
+        # Calculate deviation from 10%
+        deviation = sum([abs((count/total) * 100 - 10) for count in counts.values()])
+        return deviation / 2  # Standard Myers is sum of deviations / 2
+
+    # ==========================================================================
+    # NEW V9.8 FEATURE: GENDER PARITY AUDIT
+    # ==========================================================================
+    @staticmethod
+    def assess_gender_parity(df):
+        """
+        Social Impact Metric.
+        Checks if female enrolment/updates are statistically lower than expected (approx 48%).
+        Returns: Skew Score (Positive = Male Skew, Negative = Female Skew)
+        """
+        # Check for typical gender column names
+        male_col = next((c for c in df.columns if 'male' in c.lower() and 'fe' not in c.lower()), None)
+        female_col = next((c for c in df.columns if 'female' in c.lower()), None)
+        
+        if not male_col or not female_col: return 0.0
+        
+        total_m = df[male_col].sum()
+        total_f = df[female_col].sum()
+        total = total_m + total_f
+        
+        if total == 0: return 0.0
+        
+        female_ratio = (total_f / total) * 100
+        # Expected ~48.5% in India (Census 2011)
+        skew = 48.5 - female_ratio
+        
+        return skew # If > 5, implies significant exclusion of women in that district
 
     @staticmethod
     def calculate_benfords_law(df):
@@ -139,13 +199,22 @@ class ForensicEngine:
         
         # 2. Whipple Penalty (Demographic Quality)
         whipple = ForensicEngine.calculate_whipple(df)
-        if whipple > 125: score -= 20 # Rough Data
-        if whipple > 175: score -= 40 # Very Rough (Fraud Likely)
+        if whipple > 125: score -= 15 # Rough Data
+        if whipple > 175: score -= 25 # Very Rough (Fraud Likely)
         
-        # 3. Anomaly Penalty
+        # 3. Myer's Penalty (New V9.8)
+        myers = ForensicEngine.calculate_myers_index(df)
+        if myers > 20: score -= 10
+        
+        # 4. Gender Skew Penalty (Social Impact)
+        gender_skew = ForensicEngine.assess_gender_parity(df)
+        if abs(gender_skew) > 10: score -= 5
+        
+        # 5. Anomaly Penalty
         anomalies = ForensicEngine.detect_high_dimensional_fraud(df)
         if not anomalies.empty:
-            score -= (len(anomalies) / len(df)) * 50
+            penalty = (len(anomalies) / len(df)) * 50
+            score -= min(penalty, 30) # Cap penalty
             
         return max(0, min(100, score))
 
@@ -158,12 +227,18 @@ class ForensicEngine:
         if telecom_df.empty or 'teledensity' not in telecom_df.columns:
             return "TELECOM DATA MISSING"
             
-        # Merge on District (Fuzzy match recommended in prod, strict here for speed)
-        # Assumes normalized headers from IngestionEngine
+        # Merge on District (Robust string normalization)
         if 'district' not in aadhaar_df.columns or 'district' not in telecom_df.columns:
             return "SCHEMA MISMATCH"
             
-        merged = pd.merge(aadhaar_df, telecom_df, on='district', how='inner')
+        # Normalize district names for better joining
+        a_df = aadhaar_df.copy()
+        t_df = telecom_df.copy()
+        
+        a_df['district_norm'] = a_df['district'].astype(str).str.lower().str.strip()
+        t_df['district_norm'] = t_df['district'].astype(str).str.lower().str.strip()
+        
+        merged = pd.merge(a_df, t_df, on='district_norm', how='inner')
         if len(merged) < 10: return "INSUFFICIENT OVERLAP"
         
         correlation = merged['total_activity'].corr(merged['teledensity'])

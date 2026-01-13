@@ -6,13 +6,14 @@ from sklearn.metrics import silhouette_score
 
 class SegmentationEngine:
     """
-    BEHAVIORAL SEGMENTATION ENGINE v2.0 (GOD MODE)
+    BEHAVIORAL SEGMENTATION ENGINE v3.0 (GOD MODE)
     
     CAPABILITIES:
     1. K-Means (Centroid-based Partitioning)
     2. DBSCAN (Density-based Spatial Clustering)
     3. Hierarchical (Agglomerative Connectivity)
     4. Service Saturation Indexing
+    5. Policy Action Mapping (Automated Directives)
     """
     
     @staticmethod
@@ -202,3 +203,42 @@ class SegmentationEngine:
             return stats
         except:
             return stats
+
+    # ==========================================================================
+    # NEW V9.8: AUTOMATED POLICY MAPPING & EMERGING HOTSPOTS
+    # ==========================================================================
+    @staticmethod
+    def generate_policy_labels(cluster_label):
+        """
+        Translates Cluster Labels (e.g., 'High-Velocity Hub') into 
+        Actionable Administrative Directives.
+        """
+        directives = {
+            "🔥 High-Velocity Hub": "ACTION: Deploy 5 extra Static Enrolment Kits. Enable High-Bandwidth Sync.",
+            "💤 Low-Activity Zone": "ACTION: Initiate Awareness Camp. Deploy 1 Mobile Van for weekly rounds.",
+            "⚖️ Steady-State": "ACTION: Maintain status quo. Quarterly audit recommended.",
+            "🚨 SPATIAL ANOMALY (Noise)": "ACTION: URGENT FORENSIC AUDIT. Check for data entry fraud."
+        }
+        return directives.get(cluster_label, "ACTION: Monitor")
+
+    @staticmethod
+    def detect_emerging_hotspots(df):
+        """
+        Identifies 'Sleeping Giants' - districts with low current volume but 
+        extremely high recent acceleration (Volatility).
+        """
+        if df.empty: return pd.DataFrame()
+        
+        stats = df.groupby('district').agg({
+            'total_activity': ['sum', 'std']
+        }).reset_index()
+        stats.columns = ['district', 'vol', 'std']
+        
+        # Emerging = Low Volume (< 25th percentile) AND High Volatility (> 75th percentile)
+        q25_vol = stats['vol'].quantile(0.25)
+        q75_std = stats['std'].quantile(0.75)
+        
+        hotspots = stats[(stats['vol'] < q25_vol) & (stats['std'] > q75_std)].copy()
+        hotspots['status'] = "🚀 EMERGING HOTSPOT"
+        
+        return hotspots
