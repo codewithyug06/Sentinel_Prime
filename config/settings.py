@@ -3,7 +3,7 @@ from pathlib import Path
 
 class Config:
     """
-    CENTRAL CONFIGURATION MATRIX | SENTINEL PRIME V9.8 [AEGIS COMMAND]
+    CENTRAL CONFIGURATION MATRIX | SENTINEL PRIME V9.9 [AEGIS COMMAND]
     Controls Paths, Themes, AI Hyperparameters, Security Protocols, and Agent Behavior.
     Acts as the central nervous system for the Sovereign Digital Twin.
     
@@ -207,5 +207,72 @@ class Config:
         "EAST": {"sk": "shaikh", "moni": "monisha"},
         "WEST": {"patel": "patil", "v": "vasant"}
     }
+
+    # ==========================================================================
+    # 11. FISCAL & BUDGETARY OPTIMIZATION (NEW V9.9)
+    # ==========================================================================
+    # Cost modeling for the Fiscal Optimizer Agent
+    FISCAL_UNIT_COST_ENROLMENT_KIT = 50000  # Cost per kit in INR
+    FISCAL_UNIT_COST_MOBILE_VAN = 1200000   # Cost per van per year
+    FISCAL_UNIT_COST_OPERATOR_TRAINING = 5000
+    
+    # ROI Calculation Factors
+    FISCAL_VALUE_PER_SATURATION_POINT = 1000000 # Abstract value of 1% saturation increase
+    FISCAL_FRAUD_PREVENTION_VALUE = 500 # Saved per fraudulent enrolment blocked
+
+    # ==========================================================================
+    # 12. LEGAL & COMPLIANCE GUARDRAILS (NEW V9.9)
+    # ==========================================================================
+    # Vector DB paths for specific acts
+    LEGAL_DOCS_PATH = BASE_DIR / "data" / "legal_docs"
+    COMPLIANCE_MANDATES = {
+        "AADHAAR_ACT_2016": ["Section 7", "Section 29", "Section 33"],
+        "DPDP_ACT_2023": ["Section 8", "Section 9"]
+    }
+    
+    # ==========================================================================
+    # 13. ADVANCED PHYSICS & PINN PARAMETERS (NEW V9.9)
+    # ==========================================================================
+    # Physics-Informed Neural Network (PINN) friction coefficients
+    # Used to model population spread like fluid dynamics
+    FRICTION_COEFFICIENTS = {
+        "PLAINS": 0.1,
+        "HILLS": 0.6,
+        "FOREST": 0.8,
+        "URBAN": 0.05
+    }
+    
+    # ==========================================================================
+    # 14. FEDERATED LEARNING & DIFFERENTIAL PRIVACY (NEW V9.9)
+    # ==========================================================================
+    # Simulation settings for State-to-National weight aggregation
+    FEDERATED_ROUNDS = 10
+    FEDERATED_MIN_CLIENTS = 3
+    DIFFERENTIAL_PRIVACY_EPSILON = 1.0  # Privacy budget
+    
+    # ==========================================================================
+    # 15. ENTROPY & GHOST DETECTION (NEW V9.9)
+    # ==========================================================================
+    # Information Entropy thresholds to detect machine-generated vs human data
+    ENTROPY_THRESHOLD_LOW = 0.5  # Too regular (Suspicious)
+    ENTROPY_THRESHOLD_HIGH = 4.5 # Too chaotic (Random noise)
+    
+    # ==========================================================================
+    # 16. DISTRIBUTED COMPUTE CLUSTER (NEW V9.9)
+    # ==========================================================================
+    # Dask / Ray Cluster Configuration
+    COMPUTE_BACKEND = "dask" # Options: "dask", "ray", "local"
+    DASK_SCHEDULER_PORT = 8786
+    RAY_DASHBOARD_PORT = 8265
+    NUM_WORKERS = 4 # Default for local simulation
+    
+    # ==========================================================================
+    # 17. OPERATOR TRUST SCORING (NEW V9.9)
+    # ==========================================================================
+    # Penalties applied to Operator Trust Score (starts at 100)
+    TRUST_PENALTY_WHIPPLE = 10  # If age heaping detected
+    TRUST_PENALTY_BENFORD = 15  # If digit bias detected
+    TRUST_PENALTY_GEO_TRIANGLE = 25 # If collusion detected
+    TRUST_RECOVERY_RATE = 0.5   # Points recovered per month of clean behavior
 
 config = Config()

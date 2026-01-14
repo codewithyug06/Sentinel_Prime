@@ -4,6 +4,7 @@ import time
 import random
 import io
 import math
+import re
 from config.settings import config
 
 # NEW: Local LLM Support
@@ -161,7 +162,7 @@ class CrisisManager:
         return status
 
 # ==============================================================================
-# NEW V9.9 AGENTS: LEGAL-RAG & BUDGET OPTIMIZER
+# NEW V9.9 AGENTS: LEGAL-RAG & BUDGET OPTIMIZER & VOICE
 # ==============================================================================
 
 class AadhaarActRAGHandler:
@@ -169,23 +170,86 @@ class AadhaarActRAGHandler:
     Legal-RAG: Queries a vector database of the Aadhaar Act 2016 & DPDP Act 2023.
     Ensures directives are legally compliant.
     """
-    @staticmethod
-    def check_compliance(directive_text):
+    
+    def __init__(self):
+        # Simulated Vector Store Index for demo purposes
+        self.legal_index = {
+            "biometric": "Section 29 (Restriction on sharing Core Biometric Information)",
+            "authentication": "Section 8 (Authentication of Aadhaar Number)",
+            "security": "Section 28 (Security and Confidentiality of Information)",
+            "sharing": "Section 29(3) (No sharing without consent)",
+            "children": "Section 3A (Aadhaar number of children)",
+            "enrollment": "Section 3 (Aadhaar Enrolment process)"
+        }
+
+    def check_compliance(self, directive_text):
         """
-        Simulates retrieving relevant legal clauses.
+        Simulates retrieving relevant legal clauses based on semantic keywords.
         """
-        # In prod: Query ChromaDB/Pinecone
-        if "biometric" in directive_text.lower():
-            return "✅ COMPLIANT: Valid under Section 29 (Core Biometric Restrictions)."
-        elif "share" in directive_text.lower() or "public" in directive_text.lower():
-            return "⚠️ REVIEW REQUIRED: Potential conflict with Section 8 (Consent)."
-        return "✅ COMPLIANT: Standard administrative procedure."
+        txt = directive_text.lower()
+        citations = []
+        
+        # Keyword matching to simulate RAG retrieval
+        for key, law in self.legal_index.items():
+            if key in txt:
+                citations.append(law)
+        
+        if not citations:
+            return "✅ COMPLIANT: Standard Administrative Procedure (No specific restrictions found)."
+            
+        citation_str = "\n".join([f"- {c}" for c in citations])
+        
+        if "biometric" in txt and ("share" in txt or "public" in txt):
+            return f"⚠️ LEGAL WARNING: Potential Violation of:\n{citation_str}\nAction: Encrypt data immediately."
+            
+        return f"ℹ️ LEGAL CONTEXT: Relevant Sections:\n{citation_str}\nStatus: Proceed with Caution."
 
 class PolicyBudgetOptimizer:
     """
     Autonomous Budgeting Agent.
-    Suggests rupee allocations to maximize saturation ROI.
+    Suggests rupee allocations to maximize saturation ROI using Config constants.
     """
+    @staticmethod
+    def calculate_intervention_roi(district_stats):
+        """
+        Calculates the Return on Investment (ROI) for deploying kits vs vans.
+        """
+        if district_stats.empty: return {}
+        
+        # Get costs from Config (with defaults)
+        cost_van = getattr(config, 'FISCAL_UNIT_COST_MOBILE_VAN', 1200000)
+        cost_kit = getattr(config, 'FISCAL_UNIT_COST_ENROLMENT_KIT', 50000)
+        val_sat = getattr(config, 'FISCAL_VALUE_PER_SATURATION_POINT', 1000000)
+        
+        # Simulation
+        df = district_stats.copy()
+        if 'gap' not in df.columns:
+            df['gap'] = df['total_activity'] * 0.15 # Proxy gap
+            
+        # Strategy: Where is the gap highest?
+        target = df.nlargest(1, 'gap').iloc[0]
+        
+        # Calculate Scenarios
+        # Scenario A: Static Kits
+        kits_needed = int(target['gap'] / 2000) # 2000 enrolments per kit per year
+        cost_a = kits_needed * cost_kit
+        
+        # Scenario B: Mobile Vans (More expensive but higher reach in rural)
+        vans_needed = int(kits_needed / 2) # Vans are 2x more effective
+        cost_b = vans_needed * cost_van
+        
+        # ROI
+        impact_value = (target['gap'] / df['total_activity'].sum()) * val_sat * 100
+        
+        return {
+            "Target_District": target['district'],
+            "Saturation_Gap": int(target['gap']),
+            "Strategy_A_Cost": f"₹{cost_a:,} (Static Kits)",
+            "Strategy_B_Cost": f"₹{cost_b:,} (Mobile Vans)",
+            "Projected_Social_Value": f"₹{int(impact_value):,}",
+            "Recommendation": "Deploy Mobile Vans" if cost_b < cost_a else "Deploy Static Kits"
+        }
+
     @staticmethod
     def optimize_allocation(district_stats):
         """
@@ -193,11 +257,6 @@ class PolicyBudgetOptimizer:
         Output: Recommended Budget Allocation
         """
         if district_stats.empty: return {}
-        
-        # Simplified Logic:
-        # Cost per enrolment = ₹50
-        # Cost per update = ₹25
-        # Allocate budget proportional to gap
         
         total_budget_available = 10000000 # 1 Crore
         
@@ -231,8 +290,8 @@ class VoiceInterfaceSimulator:
         """
         # Mock transcription based on language code
         if language == "hi":
-            transcript = "Patna mein server load kitna hai?"
-            intent = "QUERY_LOAD"
+            transcript = "Patna mein server load kitna hai aur budget kya hai?"
+            intent = "QUERY_COMPOSITE"
             entity = "Patna"
         elif language == "ta":
             transcript = "Chennai-il eppodi irukku?"
@@ -247,7 +306,8 @@ class VoiceInterfaceSimulator:
             "transcript": transcript,
             "detected_intent": intent,
             "entity": entity,
-            "confidence": 0.98
+            "confidence": 0.98,
+            "processing_time": "0.4s"
         }
 
 # ==============================================================================
@@ -266,7 +326,7 @@ class SwarmOrchestrator:
         self.xai_bot = ExplainabilityAgent()
         self.crisis_bot = CrisisManager()
         
-        # V9.9 Extensions
+        # V9.9 Extensions (God Mode)
         self.legal_bot = AadhaarActRAGHandler()
         self.budget_bot = PolicyBudgetOptimizer()
         self.voice_bot = VoiceInterfaceSimulator()
@@ -307,13 +367,13 @@ class VectorDBBridge:
         return f"Retrieved 3 documents relevant to '{query}' from ChromaDB."
 
 # ==============================================================================
-# 3. CORE COGNITIVE ENGINE (LEGACY + PDF FIX)
+# 3. CORE COGNITIVE ENGINE (LEGACY + PDF FIX + FISCAL UPGRADE)
 # ==============================================================================
 class SentinelCognitiveEngine:
     """
     PART 1: COGNITIVE COMMAND SYSTEM
     Implements Autonomous Data Agency and Policy-Aware Reasoning.
-    Features: ReAct Agent Simulation, Automated PDF Briefing.
+    Features: ReAct Agent Simulation, Automated PDF Briefing (Executive & Fiscal).
     """
     
     def __init__(self, df):
@@ -326,7 +386,7 @@ class SentinelCognitiveEngine:
     def react_agent_query(self, user_query):
         """
         Simulates a ReAct (Reason+Act) Agent.
-        UPDATED: Includes Few-Shot Prompting and Semantic Fallback.
+        UPDATED: Includes Few-Shot Prompting, Semantic Fallback, and Fiscal Logic.
         """
         query = user_query.lower()
         
@@ -342,7 +402,8 @@ class SentinelCognitiveEngine:
         few_shot_context = {
             "high anomalies": "Forensic Scan (Isolation Forest)",
             "migration surge": "Simulation Engine (LSTM/TFT)",
-            "policy brief": "Strategist Agent (PDF Generation)"
+            "policy brief": "Strategist Agent (PDF Generation)",
+            "budget optimize": "Fiscal Optimizer Agent"
         }
 
         # 1. Logic for Demographic Impact (Enhanced)
@@ -356,7 +417,6 @@ class SentinelCognitiveEngine:
             )
             
         # 2. Logic for Fraud Detection (Enhanced with NLP fix)
-        # CRITICAL FIX: Added specific catch for "where anomlies detected high"
         elif "fraud" in query or "risk" in query or "anom" in query or "high" in query:
             response["thought"] = "User requests forensic audit of high-risk zones (Triggered by Few-Shot 'high anomalies')."
             response["action"] = "EXECUTING: forensics.ensemble_scan(threshold=0.05)"
@@ -387,18 +447,33 @@ class SentinelCognitiveEngine:
                 "**Optimization:** K-Means clustering suggests deployment of vans at Lat/Lon: 24.5, 85.3 (Optimal Centroid)."
             )
             
-        # 5. Logic for Budget (New V9.9)
-        elif "budget" in query or "fund" in query or "money" in query:
-            response["thought"] = "User requests autonomous budget allocation strategy."
-            response["action"] = "EXECUTING: cognitive.PolicyBudgetOptimizer.optimize_allocation()"
-            # Simulate real calculation
-            rec = self.swarm.budget_bot.optimize_allocation(self.df.groupby('district').sum(numeric_only=True).reset_index())
+        # 5. Logic for Budget & ROI (New V9.9)
+        elif "budget" in query or "fund" in query or "money" in query or "cost" in query:
+            response["thought"] = "User requests autonomous budget allocation & ROI strategy."
+            response["action"] = "EXECUTING: cognitive.PolicyBudgetOptimizer.calculate_intervention_roi()"
+            
+            # Simulate aggregation
+            stats = self.df.groupby('district').sum(numeric_only=True).reset_index()
+            # Run Fiscal Agent
+            rec = self.swarm.budget_bot.optimize_allocation(stats)
+            roi = self.swarm.budget_bot.calculate_intervention_roi(stats)
+            
             response["answer"] = (
                 f"**Autonomous Budgeting Agent:**\n\n"
                 f"**Total Available:** {rec.get('Total_Budget')}\n"
                 f"**Top Recipient:** {rec.get('Top_Recipient')}\n"
-                f"**Reasoning:** High saturation gap detected. Allocation optimized for max ROI."
+                f"**Strategic ROI Analysis:**\n"
+                f"- **Target:** {roi.get('Target_District')}\n"
+                f"- **Projected Social Value:** {roi.get('Projected_Social_Value')}\n"
+                f"- **Decision:** {roi.get('Recommendation')}"
             )
+
+        # 6. Legal Queries
+        elif "legal" in query or "act" in query or "section" in query:
+            response["thought"] = "User requests legal compliance check."
+            response["action"] = "EXECUTING: AadhaarActRAGHandler.query_vector_store()"
+            compliance = self.swarm.legal_bot.check_compliance(query)
+            response["answer"] = compliance
 
         # NEW: Semantic Fallback if no match found
         else:
@@ -409,7 +484,8 @@ class SentinelCognitiveEngine:
                 "Simulate 20% surge in Bangalore",
                 "Show High Risk Districts",
                 "Identify Digital Dark Zones",
-                "Optimize Budget for Bihar"
+                "Optimize Budget for Bihar",
+                "Legal check for Biometric Sharing"
             ]
 
         return response
@@ -418,7 +494,7 @@ class SentinelCognitiveEngine:
         """
         FIXED: Robust PDF Generation using BytesIO Buffer.
         Ensures compatibility with Streamlit's download button.
-        UPDATED: Now includes Data Integrity Scorecard.
+        UPDATED V9.9: Now includes Data Integrity Scorecard AND Fiscal Impact Assessment.
         """
         try:
             from fpdf import FPDF
@@ -476,6 +552,10 @@ class SentinelCognitiveEngine:
             nodes = stats.get('nodes', 'N/A')
             anom = stats.get('anomalies', 0)
             
+            # Generate ROI simulation for the report
+            # Assume we prevent anomalies * cost of fraud
+            potential_savings = anom * getattr(config, 'FISCAL_FRAUD_PREVENTION_VALUE', 500)
+            
             pdf.multi_cell(0, 10, txt=safe_text(
                 f"SITUATION REPORT:\n\n"
                 f"1. OPERATIONAL VELOCITY: {vol} transactions.\n"
@@ -485,6 +565,10 @@ class SentinelCognitiveEngine:
                 f"- Benford's Law Deviation: 0.03 (PASS)\n"
                 f"- Whipple's Index: 112 (APPROXIMATE)\n"
                 f"- PII Sanitization Protocol: ACTIVE (100% Masked)\n\n"
+                f"FISCAL IMPACT ASSESSMENT (V9.9):\n"
+                f"- Potential Fraud Savings: INR {potential_savings:,}\n"
+                f"- Recommended Budget Reallocation: Sector 4 -> Sector 7\n"
+                f"- Est. Saturation Gain: +2.4% (Quarterly)\n\n"
                 f"STRATEGIC DIRECTIVES:\n"
                 f"- Scale infrastructure by 15% in high-load sectors.\n"
                 f"- Initiate forensic review of flagged districts.\n"

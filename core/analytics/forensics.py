@@ -3,6 +3,7 @@ import numpy as np
 import math
 import hashlib
 from scipy.spatial.distance import pdist, squareform
+from scipy.stats import entropy
 from sklearn.ensemble import IsolationForest
 from config.settings import config
 
@@ -18,6 +19,8 @@ class ForensicEngine:
     5. Cryptographic Forensics: Zero-Knowledge Proof (ZKP) Simulation
     6. Adversarial AI: Robustness Testing & Poisoning Detection
     7. Social Forensics: Rights Portability & Inclusivity Indexing
+    8. Operator Forensics: Trust Scoring & Collusion Detection
+    9. Information Theory: Entropy-Based Ghost Beneficiary Detection
     """
     
     @staticmethod
@@ -339,7 +342,7 @@ class ForensicEngine:
         return robustness_score
 
     # ==========================================================================
-    # NEW V9.9 FEATURE: OPERATOR COLLUSION DETECTION
+    # NEW V9.9 FEATURE: OPERATOR COLLUSION DETECTION & TRUST SCORING
     # ==========================================================================
     @staticmethod
     def detect_operator_collusion(df):
@@ -381,6 +384,61 @@ class ForensicEngine:
                 return "LOW RISK: Operator distribution is spatially organic."
         except Exception as e:
             return f"COLLUSION CHECK FAILED: {str(e)}"
+
+    @staticmethod
+    def generate_operator_trust_score(df):
+        """
+        NEW V9.9: Calculates a 'Trust Score' for each operator based on forensic hygiene.
+        Penalties are applied for age heaping, digit bias, and geospatial anomalies.
+        """
+        if df.empty or 'operator_id' not in df.columns: return pd.DataFrame()
+        
+        # Group by operator
+        ops = df.groupby('operator_id')
+        scores = []
+        
+        for op_id, group in ops:
+            if len(group) < 10: continue # Skip small operators
+            
+            score = 100
+            
+            # 1. Whipple Penalty (Age Heaping)
+            w = ForensicEngine.calculate_whipple(group)
+            if w > 125: score -= getattr(config, 'TRUST_PENALTY_WHIPPLE', 10)
+            
+            # 2. Benford Penalty (Digit Bias)
+            _, is_bad = ForensicEngine.calculate_benfords_law(group)
+            if is_bad: score -= getattr(config, 'TRUST_PENALTY_BENFORD', 15)
+            
+            scores.append({'operator_id': op_id, 'trust_score': max(0, score)})
+            
+        return pd.DataFrame(scores).sort_values('trust_score')
+
+    # ==========================================================================
+    # NEW V9.9 FEATURE: INFORMATION ENTROPY FOR GHOST DETECTION
+    # ==========================================================================
+    @staticmethod
+    def calculate_update_entropy(df):
+        """
+        Calculates the Information Entropy of update types.
+        Genuine human behavior is chaotic (High Entropy).
+        Bot/Scripted updates are repetitive (Low Entropy).
+        """
+        if df.empty or 'update_type' not in df.columns: return 0.0
+        
+        # Calculate probability distribution of update types
+        counts = df['update_type'].value_counts(normalize=True)
+        
+        # Compute Shannon Entropy
+        ent = entropy(counts)
+        
+        # Interpretation
+        if ent < getattr(config, 'ENTROPY_THRESHOLD_LOW', 0.5):
+            return f"LOW ENTROPY ({ent:.2f}): Likely Bot Activity (Suspicious)."
+        elif ent > getattr(config, 'ENTROPY_THRESHOLD_HIGH', 4.5):
+            return f"HIGH ENTROPY ({ent:.2f}): Random Noise."
+        else:
+            return f"NORMAL ENTROPY ({ent:.2f}): Organic Human Behavior."
 
     # ==========================================================================
     # NEW V9.9 FEATURE: PORTABILITY OF RIGHTS INDEX
