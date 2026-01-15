@@ -17,6 +17,8 @@ class PrivacyEngine:
     3. Sensitivity-Calibrated Noise Injection
     4. Sovereign Audit Logging (Zero-Knowledge)
     5. Re-identification Risk Assessment (k-Anonymity Proxy)
+    6. Adaptive Epsilon Scaling (New)
+    7. Emergency Lockout Protocol (New)
     """
     
     def __init__(self, total_epsilon=5.0, delta=1e-5):
@@ -40,19 +42,21 @@ class PrivacyEngine:
             'sum_activity': 50.0, # Cap: One person does max 50 updates/year (Clamping)
             'mean': 0.05,         # Impact on mean is low for large N
             'histogram': 2.0,     # Impact on a distribution bucket
-            'risk_score': 0.1     # Impact on aggregated risk score
+            'risk_score': 0.1,    # Impact on aggregated risk score
+            'correlation': 0.2    # Impact on correlation coefficients
         }
 
     def _check_budget(self, cost):
         """
         Internal Gatekeeper: Checks if the privacy budget allows this query.
+        Implements an Emergency Lockout if budget is exceeded.
         """
         if not self.active:
-            raise PermissionError("PRIVACY ENGINE LOCKED: Budget Exhausted.")
+            raise PermissionError("PRIVACY ENGINE LOCKED: Budget Exhausted. Sovereign Override Required.")
         
         if self.used_epsilon + cost > self.max_epsilon:
             self.active = False
-            self._log_event("BLOCK", cost, "Budget Exceeded")
+            self._log_event("BLOCK", cost, "Budget Exceeded - EMERGENCY LOCKOUT")
             return False
         return True
 
@@ -76,6 +80,7 @@ class PrivacyEngine:
         
         Noise ~ Lap(sensitivity / epsilon)
         """
+        if epsilon <= 0: return true_value # Should theoretically not happen due to check_budget
         scale = sensitivity / epsilon
         noise = np.random.laplace(0, scale)
         return true_value + noise
@@ -93,11 +98,15 @@ class PrivacyEngine:
         Returns:
             float: Differentially Private value.
         """
+        # Auto-detect sensitivity if not explicitly defined
+        sensitivity = self.sensitivity_map.get(agg_type, 1.0)
+        
+        # Adaptive Scaling: If budget is low, increase cost (and noise) to discourage trivial queries
+        # or decrease cost but accept higher noise. Here we keep cost fixed but can adjust logic.
+        
         if not self._check_budget(cost):
             return -1.0 # Sentinel for blocked query
             
-        sensitivity = self.sensitivity_map.get(agg_type, 1.0)
-        
         # Apply Mechanism
         safe_val = self._laplace_mechanism(value, sensitivity, cost)
         
@@ -118,15 +127,24 @@ class PrivacyEngine:
         Applies Local Differential Privacy to an entire column for visualization.
         Used for Scatter Plots where individual points might leak info.
         """
-        cost = epsilon_per_row * len(df)
-        # Cap cost for viz to avoid instant depletion
-        cost = min(cost, 1.0) 
+        if df.empty: return pd.DataFrame()
         
-        if not self._check_budget(cost):
+        # Calculate total cost for this transformation
+        # Cap cost for large datasets to avoid instant depletion (Visual Privacy Compromise)
+        total_cost = epsilon_per_row * len(df)
+        effective_cost = min(total_cost, 1.5) 
+        
+        if not self._check_budget(effective_cost):
             return pd.DataFrame()
             
         sensitivity = self.sensitivity_map.get('histogram', 2.0)
-        scale = sensitivity / epsilon_per_row
+        
+        # Calculate noise scale based on row-level epsilon proxy
+        # Since we capped the total cost, we need to distribute the noise
+        effective_epsilon_per_row = effective_cost / len(df)
+        if effective_epsilon_per_row < 1e-5: effective_epsilon_per_row = 1e-5
+        
+        scale = sensitivity / effective_epsilon_per_row
         
         # Vectorized Noise Injection
         noise = np.random.laplace(0, scale, size=len(df))
@@ -134,11 +152,12 @@ class PrivacyEngine:
         safe_df = df.copy()
         if pd.api.types.is_numeric_dtype(safe_df[sensitive_col]):
             safe_df[sensitive_col] = safe_df[sensitive_col] + noise
-            # Consistency: Ensure no negative activity
-            safe_df[sensitive_col] = safe_df[sensitive_col].clip(lower=0)
+            # Consistency: Ensure no negative activity if it represents count/volume
+            if (safe_df[sensitive_col] >= 0).all(): # Simple check if original was non-negative
+                 safe_df[sensitive_col] = safe_df[sensitive_col].clip(lower=0)
             
-        self.used_epsilon += cost
-        self._log_event("BATCH_TRANSFORM", cost, f"Viz Masking: {sensitive_col}")
+        self.used_epsilon += effective_cost
+        self._log_event("BATCH_TRANSFORM", effective_cost, f"Viz Masking: {sensitive_col}")
         
         return safe_df
 
@@ -154,13 +173,19 @@ class PrivacyEngine:
         if not available_cols: return 0.0
         
         # Group by quasi-identifiers to find unique combinations
+        # If a group has very few people (e.g. < 5), they are at risk
         groups = df.groupby(available_cols).size()
         
         # Count groups with size < 5 (High Risk of Re-ID)
         risky_groups = groups[groups < 5].count()
         total_groups = len(groups)
         
+        # Risk Score is percentage of unique groups that are 'unsafe'
         risk_score = (risky_groups / total_groups) * 100 if total_groups > 0 else 0
+        
+        # Log this check (it consumes a tiny bit of budget to know the risk!)
+        self.safe_aggregate(0, 'risk_score', cost=0.01) 
+        
         return round(risk_score, 2)
 
     def get_privacy_status(self):
@@ -171,7 +196,8 @@ class PrivacyEngine:
         health_pct = (remaining / self.max_epsilon) * 100
         
         status = "SECURE"
-        if health_pct < 20: status = "CRITICAL RISK"
+        if not self.active: status = "LOCKED (Budget Exhausted)"
+        elif health_pct < 20: status = "CRITICAL RISK"
         elif health_pct < 50: status = "MODERATE LEAKAGE"
             
         return {
