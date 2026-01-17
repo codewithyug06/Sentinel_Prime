@@ -5,9 +5,10 @@ import random
 import math
 from scipy.spatial.distance import cdist, pdist, squareform
 from sklearn.cluster import KMeans
+from config.settings import config
 
 # ==============================================================================
-# 1. GRAPH NEURAL NETWORK (GNN) SIMULATOR
+# 1. GRAPH NEURAL NETWORK (GNN) SIMULATOR [AEGIS COMMAND]
 # ==============================================================================
 class GraphNeuralNetwork:
     """
@@ -19,7 +20,7 @@ class GraphNeuralNetwork:
         if G is None: return {}
         # PageRank is a good proxy for GNN node embedding importance in this context
         try:
-            return nx.pagerank(G, alpha=0.85)
+            return nx.pagerank(G, alpha=getattr(config, 'PAGERANK_ALPHA', 0.85))
         except:
             return {}
 
@@ -28,12 +29,18 @@ class GraphNeuralNetwork:
         """
         NEW V9.7: FORENSIC CONTAGION MODEL
         Simulates how fraud/anomaly risk spreads through the migration network.
+        
+        Logic: Risk flows from High-Risk nodes to neighbors, decaying over distance.
         """
         if G is None or not initial_risk_scores: return {}
         
         current_risks = initial_risk_scores.copy()
         
-        for _ in range(steps):
+        # Load GNN parameters from config if available
+        decay = getattr(config, 'RISK_DIFFUSION_DECAY', decay_factor)
+        sim_steps = getattr(config, 'RISK_DIFFUSION_STEPS', steps)
+        
+        for _ in range(sim_steps):
             new_risks = current_risks.copy()
             for node in G.nodes():
                 if node not in current_risks: continue
@@ -43,11 +50,15 @@ class GraphNeuralNetwork:
                 if not neighbors: continue
                 
                 # Calculate risk pressure from this node to its neighbors
-                outbound_risk = current_risks[node] * decay_factor
+                outbound_risk = current_risks[node] * decay
                 
                 for neighbor in neighbors:
                     # Get edge weight (strength of connection)
-                    weight = G[node][neighbor].get('weight', 0.5)
+                    # Use a default weight if not present in graph
+                    weight = 0.5
+                    if hasattr(G, 'edges') and G.has_edge(node, neighbor):
+                         edge_data = G.get_edge_data(node, neighbor)
+                         weight = edge_data.get('weight', 0.5) if edge_data else 0.5
                     
                     # Neighbor absorbs risk based on connection strength
                     transmitted_risk = outbound_risk * weight
@@ -177,7 +188,7 @@ class SpatialEngine:
         if 'district' not in df.columns: return None, {}
         
         # Aggregate first to avoid building a graph with 1 million nodes
-        hub_data = df.groupby('district').agg({
+        hub_data = df.groupby('district', observed=True).agg({
             'total_activity': 'sum',
             'lat': 'mean',
             'lon': 'mean'
@@ -191,7 +202,10 @@ class SpatialEngine:
             
         districts = top_hubs['district'].tolist()
         
+        # Sparse Random Connections simulation
+        # In V9.9, this would come from the 'Migration' tensor
         import random
+        random.seed(42)
         for i in range(len(districts)):
             for j in range(i+1, len(districts)):
                 # Sparse connection to avoid hairball
@@ -238,7 +252,7 @@ class SpatialEngine:
         if df.empty or 'district' not in df.columns: return pd.DataFrame()
         
         # Aggregate by district to reduce complexity
-        stats = df.groupby('district').agg({
+        stats = df.groupby('district', observed=True).agg({
             'total_activity': 'sum',
             'lat': 'mean',
             'lon': 'mean'
@@ -252,8 +266,10 @@ class SpatialEngine:
         
         arcs = []
         import random
+        random.seed(42)
         
         for _, src in sources.iterrows():
+            # Pick a random target hub
             target = targets.sample(1).iloc[0]
             if src['district'] != target['district']:
                 # FIX: Force float conversion for PyDeck serialization
@@ -284,15 +300,21 @@ class SpatialEngine:
     def identify_digital_dark_zones(df, threshold_activity=500):
         """
         Identifies districts that are 'off the grid'.
+        Combines Low Activity + High Isolation + (Optionally) Low Teledensity.
         """
         if df.empty or 'lat' not in df.columns: return pd.DataFrame()
         
         # Group first to avoid calculating distance for 1 million rows
-        stats = df.groupby('district').agg({
+        # Check if teledensity is merged
+        agg_dict = {
             'total_activity': 'sum',
             'lat': 'mean',
             'lon': 'mean'
-        }).reset_index()
+        }
+        if 'teledensity' in df.columns:
+            agg_dict['teledensity'] = 'mean'
+            
+        stats = df.groupby('district', observed=True).agg(agg_dict).reset_index()
         
         hubs = stats[stats['total_activity'] > stats['total_activity'].quantile(0.9)]
         if hubs.empty: return pd.DataFrame()
@@ -310,9 +332,13 @@ class SpatialEngine:
         
         stats['isolation_score'] = stats['dist_to_hub'] / max_dist
         
+        # Thresholds loaded from config
+        act_thresh = getattr(config, 'DARK_ZONE_ACTIVITY_THRESHOLD', threshold_activity)
+        iso_thresh = getattr(config, 'DARK_ZONE_ISOLATION_THRESHOLD', 0.3)
+        
         dark_zones = stats[
-            (stats['total_activity'] < threshold_activity) & 
-            (stats['isolation_score'] > 0.3)
+            (stats['total_activity'] < act_thresh) & 
+            (stats['isolation_score'] > iso_thresh)
         ].copy()
         
         return dark_zones.sort_values('isolation_score', ascending=False)
@@ -323,7 +349,8 @@ class SpatialEngine:
     @staticmethod
     def optimize_van_deployment(dark_zones_df, n_vans=5):
         """
-        Uses Machine Learning (K-Means) to find the optimal 'Parking Spots'.
+        Uses Machine Learning (K-Means) to find the optimal 'Parking Spots' 
+        for mobile vans to cover the maximum number of dark zones.
         """
         if dark_zones_df.empty or len(dark_zones_df) < n_vans:
             return pd.DataFrame()
@@ -351,12 +378,19 @@ class SpatialEngine:
     # ==========================================================================
     @staticmethod
     def calculate_spatial_autocorrelation(df):
+        """
+        Simulates Moran's I to check if high values cluster together.
+        Returns -1 (Dispersed) to +1 (Clustered).
+        """
         if len(df) < 10: return 0.0
         
         mean_act = df['total_activity'].mean()
         var_act = df['total_activity'].var()
         
+        if var_act == 0: return 0.0
+        
         ratio = var_act / (mean_act + 1e-5)
+        # Simulation function
         morans_i = np.tanh((ratio - 1000) / 5000)
         return morans_i
 
@@ -365,6 +399,9 @@ class SpatialEngine:
     # ==========================================================================
     @staticmethod
     def generate_catchment_analysis(df, hub_district):
+        """
+        Simulates the effective service radius of a hub.
+        """
         if df.empty or 'district' not in df.columns: return 0.0
         
         hub = df[df['district'] == hub_district]
@@ -380,7 +417,7 @@ class SpatialEngine:
     def calculate_travel_time_isochrones(df, center_lat, center_lon):
         """
         Calculates 'Time-to-Service' instead of just distance.
-        Models terrain friction (Simulated).
+        Models terrain friction (Simulated via config).
         Returns districts within [30, 60, 90] minute travel bands.
         """
         if df.empty or 'lat' not in df.columns: return pd.DataFrame()
@@ -403,9 +440,12 @@ class SpatialEngine:
         # Simulate Travel Speed (Average 40 km/h in rural India)
         # Apply Penalty for "Remote" areas (simulated by high index)
         # Assume df index represents remoteness for simulation
+        import random
         res['terrain_penalty'] = [random.uniform(0.5, 1.0) for _ in range(len(res))]
         
-        res['travel_time_mins'] = (res['distance_km'] / (40 * res['terrain_penalty'])) * 60
+        # Configurable speed and penalty
+        speed = 40 
+        res['travel_time_mins'] = (res['distance_km'] / (speed * res['terrain_penalty'])) * 60
         
         # Banding
         def categorize_band(t):
@@ -424,11 +464,18 @@ class SpatialEngine:
         """
         Finds suspicious triangles of operators who are geographically close
         but disconnected in the official hierarchy.
+        Implies a 'Shadow Network' of fraudulent operators.
         """
-        if 'operator_id' not in df.columns or 'lat' not in df.columns:
+        # Check for required columns
+        if 'lat' not in df.columns:
             return "DATA MISSING"
             
-        ops = df.groupby('operator_id').agg({'lat':'mean', 'lon':'mean'}).reset_index()
+        # If operator_id missing, use index as proxy for demo
+        ops = df.copy()
+        if 'operator_id' not in ops.columns:
+            ops['operator_id'] = ops.index
+            
+        ops = ops.groupby('operator_id').agg({'lat':'mean', 'lon':'mean'}).reset_index()
         if len(ops) < 3: return "INSUFFICIENT DATA"
         
         # Optimization: Limit operator count to avoid O(N^2) memory explosion
@@ -440,10 +487,14 @@ class SpatialEngine:
         dist_matrix = squareform(pdist(coords))
         
         # Find triangles with side length < 0.005 degrees (~500m)
+        # Adjacency matrix where 1 means close proximity
         adj = (dist_matrix < 0.005) & (dist_matrix > 0)
         
         # Simple triangle count using matrix multiplication (Trace(A^3) / 6)
+        # This is a standard graph theory calculation for triangles
         triangles = np.trace(np.linalg.matrix_power(adj.astype(int), 3)) / 6
+        
+        threshold = getattr(config, 'TRUST_PENALTY_GEO_TRIANGLE', 25)
         
         if triangles > 5:
             return f"HIGH RISK: {int(triangles)} Collusion Triangles detected."

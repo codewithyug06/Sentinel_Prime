@@ -3,10 +3,18 @@ import numpy as np
 from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.metrics import silhouette_score
+from config.settings import config
 
 class SegmentationEngine:
     """
-    BEHAVIORAL SEGMENTATION ENGINE v9.9 (GOD MODE)
+    BEHAVIORAL SEGMENTATION ENGINE v9.9 (GOD MODE) [AEGIS COMMAND]
+    
+    The Strategic Brain of the Digital Twin.
+    Segments India's 700+ districts into actionable clusters based on:
+    1. Activity Volume (Demand)
+    2. Activity Volatility (Stability)
+    3. Socio-Economic Vulnerability (Poverty Fusion)
+    4. Demographic Skew (Exclusion Analysis)
     
     CAPABILITIES:
     1. K-Means (Centroid-based Partitioning)
@@ -15,14 +23,14 @@ class SegmentationEngine:
     4. Service Saturation Indexing
     5. Policy Action Mapping (Automated Directives)
     6. Vulnerable Group Micro-Routing (Elderly/Divyang)
-    7. Bivariate Vulnerability Index (New)
-    8. Inclusion Lag Analysis (New)
+    7. Bivariate Vulnerability Index (New V9.9)
+    8. Inclusion Lag Analysis (New V9.9)
     """
     
     @staticmethod
     def segment_districts(df, n_clusters=4):
         """
-        Segments districts into clusters using K-Means (Legacy/Standard).
+        Segments districts into clusters using K-Means.
         SAFEGUARD: Ensures 'cluster_label' column always exists.
         """
         if df.empty or 'total_activity' not in df.columns:
@@ -98,23 +106,30 @@ class SegmentationEngine:
         if df.empty or 'total_activity' not in df.columns: return pd.DataFrame()
         
         # Aggregation
-        stats = df.groupby(['district']).agg({
-            'total_activity': 'sum',
-            'lat': 'mean',
-            'lon': 'mean'
-        }).reset_index()
+        # Check if lat/lon exists, else aggregate without them
+        agg_dict = {'total_activity': 'sum'}
+        has_geo = False
+        if 'lat' in df.columns and 'lon' in df.columns:
+            agg_dict['lat'] = 'mean'
+            agg_dict['lon'] = 'mean'
+            has_geo = True
+            
+        stats = df.groupby(['district']).agg(agg_dict).reset_index()
         
         # FIX: Fill NaNs in numeric columns only
-        cols_to_fix = ['total_activity', 'lat', 'lon']
+        cols_to_fix = ['total_activity']
+        if has_geo: cols_to_fix.extend(['lat', 'lon'])
         stats[cols_to_fix] = stats[cols_to_fix].fillna(0)
         
         if len(stats) < 10: return stats # Not enough for density scan
         
         # Scale features (Critical for DBSCAN)
         # Using Lat/Lon + Activity allows us to find "Geographic Hotspots"
-        features = stats[['lat', 'lon', 'total_activity']]
+        features_to_use = ['total_activity']
+        if has_geo: features_to_use = ['lat', 'lon', 'total_activity']
+            
         scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(features)
+        X_scaled = scaler.fit_transform(stats[features_to_use])
         
         try:
             # Run DBSCAN
@@ -129,7 +144,6 @@ class SegmentationEngine:
             stats['density_group'] = stats['dbscan_cluster'].apply(label_density)
             
             # Calculate Silhouette Score to measure cluster quality (Internal Metric)
-            # Useful for the 'Strategist Agent' to know if the grouping is tight or loose
             if len(set(db.labels_)) > 1:
                 score = silhouette_score(X_scaled, db.labels_)
                 stats['cluster_quality_score'] = score
@@ -266,13 +280,17 @@ class SegmentationEngine:
         
         Returns: DataFrame with Cluster Centroids for 'Doorstep Service Agents'.
         """
-        if df.empty or 'age' not in df.columns or 'lat' not in df.columns:
+        if df.empty or 'lat' not in df.columns:
             return pd.DataFrame()
             
-        # Filter for Vulnerable Population
-        # Assuming 'disability_flag' exists, else use Age > 80 proxy
+        # Filter for Vulnerable Population based on available columns
+        vulnerable = pd.DataFrame()
         if target_group == "elderly":
-            vulnerable = df[df['age'] >= 80].copy()
+            # Check for age buckets or explicit age
+            if 'count_18_plus' in df.columns: # Proxy: High adult concentration
+                 vulnerable = df[df['count_18_plus'] > df['count_18_plus'].quantile(0.9)].copy()
+            elif 'age' in df.columns:
+                 vulnerable = df[df['age'] >= 70].copy()
         else:
             vulnerable = df.copy() # Fallback
             
@@ -309,10 +327,14 @@ class SegmentationEngine:
     # NEW V9.9: BIVARIATE VULNERABILITY INDEX (POVERTY VS SATURATION)
     # ==========================================================================
     @staticmethod
-    def calculate_bivariate_vulnerability(df):
+    def calculate_bivariate_vulnerability(df, poverty_df):
         """
-        Identifies districts with HIGH poverty but LOW Aadhaar saturation.
+        Identifies districts with HIGH poverty (MPI) but LOW Aadhaar saturation.
         This is a critical metric for 'Exclusion' audits.
+        
+        Args:
+            df: Aadhaar Master Index (aggregated by district)
+            poverty_df: NITI Aayog MPI Dataset
         """
         if df.empty: return pd.DataFrame()
         
@@ -321,28 +343,45 @@ class SegmentationEngine:
             'total_activity': 'sum'
         }).reset_index()
         
-        # 2. Simulate Poverty Index (MPI) if missing
-        # In prod, join with NITI Aayog MPI dataset
-        np.random.seed(42)
-        stats['poverty_index'] = np.random.uniform(0.1, 0.9, len(stats))
-        
+        # 2. Join with Poverty Data (Robust Name Matching)
+        if not poverty_df.empty:
+            # Normalize names
+            stats['district_key'] = stats['district'].astype(str).str.lower().str.strip()
+            poverty_df = poverty_df.copy()
+            poverty_df['district_key'] = poverty_df['district'].astype(str).str.lower().str.strip()
+            
+            merged = pd.merge(stats, poverty_df[['district_key', 'mpi_headcount_ratio']], 
+                             on='district_key', how='left')
+            
+            # Fill missing poverty data with median (Conservative imputation)
+            median_mpi = poverty_df['mpi_headcount_ratio'].median()
+            merged['mpi_headcount_ratio'] = merged['mpi_headcount_ratio'].fillna(median_mpi)
+        else:
+            # Fallback: Simulation for Demo if poverty file missing
+            np.random.seed(42)
+            stats['mpi_headcount_ratio'] = np.random.uniform(10, 60, len(stats))
+            merged = stats
+
         # 3. Calculate Saturation (Normalized Volume)
         scaler = MinMaxScaler()
-        stats['saturation'] = scaler.fit_transform(stats[['total_activity']])
+        merged['saturation'] = scaler.fit_transform(merged[['total_activity']])
         
         # 4. Bivariate Logic: High Poverty + Low Saturation = CRITICAL
         # We want to flag districts in the top-right quadrant of a Poverty vs (1-Saturation) plot
-        stats['exclusion_risk'] = stats['poverty_index'] * (1 - stats['saturation'])
+        # Normalize Poverty to 0-1
+        merged['poverty_norm'] = merged['mpi_headcount_ratio'] / 100.0
+        
+        merged['exclusion_risk'] = merged['poverty_norm'] * (1 - merged['saturation'])
         
         # 5. Labeling
         def label_risk(score):
-            if score > 0.6: return "🔴 CRITICAL EXCLUSION"
-            if score > 0.3: return "🟡 MODERATE RISK"
-            return "🟢 STABLE"
+            if score > 0.4: return "🔴 CRITICAL EXCLUSION (Priority 1)"
+            if score > 0.2: return "🟡 MODERATE RISK (Priority 2)"
+            return "🟢 STABLE (Monitor)"
             
-        stats['risk_category'] = stats['exclusion_risk'].apply(label_risk)
+        merged['risk_category'] = merged['exclusion_risk'].apply(label_risk)
         
-        return stats.sort_values('exclusion_risk', ascending=False)
+        return merged.sort_values('exclusion_risk', ascending=False)
 
     # ==========================================================================
     # NEW V9.9: INCLUSION LAG ANALYSIS (BIRTH REGISTRY GAP)
@@ -350,29 +389,33 @@ class SegmentationEngine:
     @staticmethod
     def calculate_inclusion_lag(df):
         """
-        Calculates the time delta between 'Birth' and 'Enrollment' for children.
-        High lag indicates systemic failure in child enrollment pipelines (Bal Aadhaar).
+        Calculates the failure of 'Bal Aadhaar' (Infant Enrollment).
+        If 'count_0_5' (Infants) is significantly lower than 'count_5_17', 
+        it implies babies are not being enrolled at birth.
         """
-        if df.empty or 'age' not in df.columns: return pd.DataFrame()
+        if df.empty: return pd.DataFrame()
         
-        # Filter for children < 5 years
-        children = df[df['age'] < 5].copy()
+        # Check required columns
+        if 'count_0_5' not in df.columns or 'count_5_17' not in df.columns:
+            return pd.DataFrame()
+            
+        # Group by district
+        stats = df.groupby('district').agg({
+            'count_0_5': 'sum',
+            'count_5_17': 'sum'
+        }).reset_index()
         
-        if children.empty: return pd.DataFrame()
-        
-        # Lag Calculation: Age is essentially the lag if they are just enrolling now
-        # Ideal scenario: Enrolled at birth (Age 0)
-        # If enrolling at Age 4, Lag = 4 years
-        
-        district_lag = children.groupby('district')['age'].mean().reset_index()
-        district_lag.rename(columns={'age': 'avg_enrollment_lag_years'}, inplace=True)
+        # Lag Logic: Ratio of Infants to Minors
+        # Ideally, 0-5 population is roughly 40% of 0-17 population. 
+        # If 0-5 count is very low compared to 5-17, there is a lag.
+        stats['infant_share'] = stats['count_0_5'] / (stats['count_0_5'] + stats['count_5_17'] + 1)
         
         # Assessment
-        def assess_lag(lag):
-            if lag > 2.5: return "🚨 SEVERE DELAY (>2.5 Yrs)"
-            if lag > 1.0: return "⚠️ MODERATE DELAY"
-            return "✅ TIMELY (Perinatal)"
+        def assess_lag(share):
+            if share < 0.15: return "🚨 SEVERE LAG (Babies Missing)"
+            if share < 0.25: return "⚠️ MODERATE LAG"
+            return "✅ HEALTHY PIPELINE"
             
-        district_lag['status'] = district_lag['avg_enrollment_lag_years'].apply(assess_lag)
+        stats['status'] = stats['infant_share'].apply(assess_lag)
         
-        return district_lag.sort_values('avg_enrollment_lag_years', ascending=False)
+        return stats.sort_values('infant_share', ascending=True)

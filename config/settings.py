@@ -35,6 +35,22 @@ class Config:
             print(f"Warning: Could not create directory {_dir}: {e}")
 
     # ==========================================================================
+    # 1.1. MULTIMODAL DATA PATHS (NEW V9.9)
+    # ==========================================================================
+    # Defines specific sub-directories for the 6-stream architecture
+    ENROLMENT_NATIONAL_DIR = DATA_DIR / "aadhar_enrolment_national"
+    ENROLMENT_STATE_DIR = DATA_DIR / "aadhar_enrolment_state"
+    DEMOGRAPHIC_NATIONAL_DIR = DATA_DIR / "aadhar_demographic_national"
+    DEMOGRAPHIC_STATE_DIR = DATA_DIR / "aadhar_demographic_state"
+    BIOMETRIC_NATIONAL_DIR = DATA_DIR / "aadhar_biometric_national"
+    BIOMETRIC_STATE_DIR = DATA_DIR / "aadhar_biometric_state"
+    
+    # External Baseline Paths
+    POVERTY_DATA_PATH = BASE_DIR / "data" / "external" / "poverty" / "poverty.csv"
+    CENSUS_DATA_PATH = BASE_DIR / "data" / "external" / "census" / "census2011.csv"
+    TELECOM_DATA_PATH = BASE_DIR / "data" / "external" / "telecom" / "trai_teledensity.csv"
+
+    # ==========================================================================
     # 2. SOVEREIGN VISUAL IDENTITY (OMNI-PRESENCE THEME)
     # ==========================================================================
     # Core Palette - Cyber Warfare Aesthetic

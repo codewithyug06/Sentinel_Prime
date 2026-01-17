@@ -2,7 +2,7 @@ from datetime import datetime
 
 class PolicyTemplates:
     """
-    SOVEREIGN POLICY TEMPLATES (V9.9) - GOD MODE
+    SOVEREIGN POLICY TEMPLATES (V9.9) - GOD MODE [AEGIS COMMAND]
     
     Contains structure and linguistic patterns for generating 
     high-level government briefings (Director General / Minister Level).
@@ -30,7 +30,7 @@ class PolicyTemplates:
     def get_executive_summary_template(risk_level, total_vol, ghost_savings, health_index=95.5):
         """
         Dynamic text generation for the 'Executive Summary' section.
-        Now includes the 'Sovereign Health Index'.
+        Now includes the 'Sovereign Health Index' - a composite metric of Trust, Saturation, and Inclusion.
         """
         
         tone = "neutral"
@@ -40,10 +40,10 @@ class PolicyTemplates:
         1. STRATEGIC OVERVIEW
         ---------------------
         The Sentinel Prime system has conducted a real-time audit of the Aadhaar enrolment 
-        ecosystem. 
+        ecosystem across {total_vol:,} transactional records.
         
-        > CURRENT THREAT POSTURE: {risk_level}
-        > SOVEREIGN HEALTH INDEX: {health_index}%
+        > CURRENT THREAT POSTURE:   {risk_level}
+        > SOVEREIGN HEALTH INDEX:   {health_index}%
         
         Total transactional volume stands at {total_vol:,} updates/enrolments for the period. 
         Advanced forensic scanning has identified potential fiscal leakages amounting to 
@@ -61,6 +61,7 @@ class PolicyTemplates:
     def get_fiscal_impact_section(savings, roi, fraud_prevented, subsidy_gain=0.0):
         """
         Expanded Fiscal Section with Subsidy Efficiency.
+        Quantifies the economic impact of the AI's decisions.
         """
         return f"""
         2. FISCAL EFFICIENCY & ROI ANALYSIS
@@ -78,12 +79,15 @@ class PolicyTemplates:
         | Kit Deployment ROI              | {roi}% Efficiency Gain  |
         ---------------------------------------------------------
         
+        *Logic:* Higher saturation in poverty-stricken districts correlates directly 
+        with reduced DBT leakage (Subsidy Efficiency).
         """
 
     @staticmethod
     def get_inclusion_section(dark_zones_count, demographics_flag, inclusion_lag="Unknown", bivariate_risk="Low"):
         """
         Enhanced Inclusion Section with Time-to-Identity and Bivariate Risk.
+        Focuses on the 'Invisible Citizen' problem.
         """
         return f"""
         3. INCLUSION, EXCLUSION & VULNERABILITY AUDIT
@@ -105,6 +109,7 @@ class PolicyTemplates:
     def get_forensic_audit_section(trust_score_avg, flagged_operators, entropy_status):
         """
         NEW: Specific section for Operator Trust and Entropy Forensics.
+        Reports on the integrity of the data pipeline itself.
         """
         return f"""
         4. FORENSIC INTEGRITY & OPERATOR TRUST
@@ -122,6 +127,7 @@ class PolicyTemplates:
     def get_resource_transfer_order(transfer_list):
         """
         NEW: Generates a formal 'Transfer Order' table for kits.
+        This converts data insights into administrative commands.
         """
         if not transfer_list:
             return "\n   [NO RESOURCE TRANSFERS RECOMMENDED AT THIS TIME]\n"
@@ -146,6 +152,7 @@ class PolicyTemplates:
     def get_recommendation_matrix(action_items):
         """
         Formats a list of actions into a formal matrix.
+        Prioritizes actions based on fiscal and social impact.
         """
         formatted_actions = "\n".join([f"   [ ] {item}" for item in action_items])
         
@@ -164,6 +171,7 @@ class PolicyTemplates:
     def get_legal_compliance_section():
         """
         NEW: Adds legal weight to the document.
+        Cites specific sections of the Aadhaar Act and DPDP Act.
         """
         return """
         7. LEGAL & COMPLIANCE CERTIFICATION
@@ -173,7 +181,7 @@ class PolicyTemplates:
           - Section 29: Restriction on sharing Core Biometric Information.
           - Section 33: Disclosure of information in certain cases.
         > Digital Personal Data Protection (DPDP) Act, 2023
-          - Compliance with Data Fiduciary obligations.
+          - Compliance with Data Fiduciary obligations (Data Minimization).
         
         *Data Privacy:* Differential Privacy (Epsilon < 5.0) enforced on all aggregates.
         """

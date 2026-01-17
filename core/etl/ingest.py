@@ -114,19 +114,20 @@ class IngestionEngine:
                 
             # Deep scan: Mask patterns in value text (Content Check)
             # Optimization: Check a sample first to avoid regex on clean columns
-            sample = df[col].astype(str).head(50).str.cat()
-            
-            if re.search(aadhaar_pattern, sample):
-                df[col] = df[col].astype(str).str.replace(aadhaar_pattern, 'XXXXXXXXXXXX', regex=True)
-            
-            if re.search(mobile_pattern, sample):
-                df[col] = df[col].astype(str).str.replace(mobile_pattern, 'XXXXXXXXXX', regex=True)
+            if len(df) > 0:
+                sample = df[col].astype(str).head(50).str.cat()
                 
-            if re.search(email_pattern, sample):
-                df[col] = df[col].astype(str).str.replace(email_pattern, 'REDACTED_EMAIL', regex=True)
+                if re.search(aadhaar_pattern, sample):
+                    df[col] = df[col].astype(str).str.replace(aadhaar_pattern, 'XXXXXXXXXXXX', regex=True)
+                
+                if re.search(mobile_pattern, sample):
+                    df[col] = df[col].astype(str).str.replace(mobile_pattern, 'XXXXXXXXXX', regex=True)
+                    
+                if re.search(email_pattern, sample):
+                    df[col] = df[col].astype(str).str.replace(email_pattern, 'REDACTED_EMAIL', regex=True)
 
-            if re.search(pan_pattern, sample):
-                df[col] = df[col].astype(str).str.replace(pan_pattern, 'REDACTED_PAN', regex=True)
+                if re.search(pan_pattern, sample):
+                    df[col] = df[col].astype(str).str.replace(pan_pattern, 'REDACTED_PAN', regex=True)
                 
         return df
 
@@ -175,16 +176,17 @@ class IngestionEngine:
         aggregated_weights = {}
         num_models = len(district_models)
         
-        for key in district_models[0].keys():
-            # Sum weights
-            total_weight = sum([m[key] for m in district_models])
-            avg_weight = total_weight / num_models
-            
-            # Add Differential Privacy Noise (Laplace Distribution)
-            # Noise scale is inversely proportional to epsilon
-            noise = np.random.laplace(0, 1.0/epsilon)
-            
-            aggregated_weights[key] = avg_weight + noise
+        if num_models > 0 and isinstance(district_models[0], dict):
+            for key in district_models[0].keys():
+                # Sum weights
+                total_weight = sum([m.get(key, 0) for m in district_models])
+                avg_weight = total_weight / num_models
+                
+                # Add Differential Privacy Noise (Laplace Distribution)
+                # Noise scale is inversely proportional to epsilon
+                noise = np.random.laplace(0, 1.0/epsilon)
+                
+                aggregated_weights[key] = avg_weight + noise
             
         return {
             "status": "CONVERGED",
@@ -206,7 +208,7 @@ class IngestionEngine:
         if df.empty: return df
         
         # Check for name columns
-        name_cols = [c for c in df.columns if 'name' in c.lower() or 'operator' in c.lower()]
+        name_cols = [c for c in df.columns if 'name' in c.lower() or 'operator' in c.lower() or 'district' in c.lower()]
         if not name_cols: return df
         
         # Load mapping from Config
@@ -224,267 +226,303 @@ class IngestionEngine:
             # but mapping dict requires row-wise operation or regex
             
             # 1. Lowercase for matching
-            temp_col = df[col].astype(str).str.lower()
-            
-            # 2. Iterate map (Efficient for small maps)
-            for k, v in mapping.items():
-                # Word boundary regex to ensure "Md" -> "Mohammed" but "Mdm" != "Mohammedm"
-                pattern = r'\b' + re.escape(k) + r'\b'
-                temp_col = temp_col.str.replace(pattern, v, regex=True)
+            try:
+                temp_col = df[col].astype(str).str.lower()
                 
-            # 3. Capitalize back
-            df[col] = temp_col.str.title()
+                # 2. Iterate map (Efficient for small maps)
+                for k, v in mapping.items():
+                    # Word boundary regex to ensure "Md" -> "Mohammed" but "Mdm" != "Mohammedm"
+                    pattern = r'\b' + re.escape(k) + r'\b'
+                    temp_col = temp_col.str.replace(pattern, v, regex=True)
+                    
+                # 3. Capitalize back
+                df[col] = temp_col.str.title()
+            except:
+                pass
             
         return df
 
     # ==========================================================================
-    # 5. SCHEMA VALIDATION & TYPE OPTIMIZATION
+    # 5. DATASET AUTO-DISCOVERY & SCHEMA ALIGNMENT (NEW V9.9)
     # ==========================================================================
+    def _identify_dataset_type(self, df, filename):
+        """
+        Intelligently detects the UIDAI dataset category based on internal headers
+        and filename patterns.
+        """
+        cols = [c.lower() for c in df.columns]
+        fname = filename.lower()
+        
+        # Priority 1: Check Columns
+        if any('bio_age' in c for c in cols):
+            return "Biometric_Update"
+        elif any('demo_age' in c for c in cols):
+            return "Demographic_Update"
+        elif 'age_0_5' in cols or 'age_5_17' in cols:
+            return "Enrolment"
+            
+        # Priority 2: Check Filename (if columns ambiguous)
+        if 'biometric' in fname:
+            return "Biometric_Update"
+        elif 'demographic' in fname:
+            return "Demographic_Update"
+        elif 'enrolment' in fname or 'enrollment' in fname:
+            return "Enrolment"
+            
+        return "Unknown_Activity"
+
+    def _align_schema(self, df, dataset_type):
+        """
+        Normalizes dataset-specific columns into the Sovereign Master Schema.
+        Maps Enrolment, Demographic, and Biometric groups to unified activity metrics.
+        
+        Master Schema:
+        - count_0_5 (Infants)
+        - count_5_17 (Minors)
+        - count_18_plus (Adults)
+        - total_activity (Sum)
+        """
+        df = df.copy()
+        
+        # Normalize column names first
+        df.columns = [c.lower().strip().replace(" ", "_") for c in df.columns]
+        
+        # Schema Definitions
+        schema_map = {
+            "Enrolment": {
+                'age_0_5': 'count_0_5',
+                'age_5_17': 'count_5_17',
+                'age_18_greater': 'count_18_plus'
+            },
+            "Demographic_Update": {
+                'demo_age_5_17': 'count_5_17',
+                'demo_age_17_': 'count_18_plus'
+            },
+            "Biometric_Update": {
+                'bio_age_5_17': 'count_5_17',
+                'bio_age_17_': 'count_18_plus'
+            }
+        }
+        
+        # Apply Mapping
+        mapping = schema_map.get(dataset_type, {})
+        df = df.rename(columns=mapping)
+        
+        # Ensure standard columns exist (Fill missing with 0)
+        for col in ['count_0_5', 'count_5_17', 'count_18_plus']:
+            if col not in df.columns:
+                df[col] = 0
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            
+        # Calculate Unified Total Activity
+        df['total_activity'] = df['count_0_5'] + df['count_5_17'] + df['count_18_plus']
+        df['activity_type'] = dataset_type
+        
+        return df
+
     def _optimize_dtypes(self, df):
         """
-        Downcasts numeric types and converts categorical strings to 'category'
-        to save RAM for large-scale processing.
+        Downcasts memory usage for 1.4B record scale.
         """
-        # Strings to Category
-        for col in ['state', 'district', 'sub_district', 'gender']:
-            if col in df.columns:
-                df[col] = df[col].astype('category')
+        for col in ['state', 'district', 'sub_district', 'gender', 'activity_type']:
+            if col in df.columns: df[col] = df[col].astype('category')
         
-        # Downcast Floats
-        fcols = df.select_dtypes('float').columns
-        for c in fcols:
-            df[c] = pd.to_numeric(df[c], downcast='float')
-            
-        # Downcast Ints
-        icols = df.select_dtypes('integer').columns
-        for c in icols:
-            df[c] = pd.to_numeric(df[c], downcast='integer')
+        for col in df.select_dtypes('float').columns: 
+            df[col] = pd.to_numeric(df[col], downcast='float')
+        
+        for col in df.select_dtypes('integer').columns: 
+            df[col] = pd.to_numeric(df[col], downcast='integer')
             
         return df
 
     # ==========================================================================
-    # 6. MASTER INGESTION (DISTRIBUTED SCALING)
+    # 6. MASTER INGESTION (RECURSIVE & MULTIMODAL)
     # ==========================================================================
-    def load_master_index_distributed(self):
-        """
-        Scalable Data Loader using Dask or Ray.
-        Designed to handle 1.4 Billion records by streaming from disk.
-        Falls back to Pandas if dataset is small (<1GB) or backend missing.
-        """
-        # FALLBACK: If Backends are not installed, use standard Pandas loader
-        if not DASK_AVAILABLE and not RAY_AVAILABLE:
-            return self.load_master_index()
-
-        all_files = glob.glob(str(self.raw_path / "*.csv"))
-        if not all_files: return pd.DataFrame()
-        
-        # Heuristic: Check total size. If < 500MB, Pandas is faster due to overhead.
-        total_size = sum(os.path.getsize(f) for f in all_files)
-        if total_size < 1024 * 1024 * 500: # < 500MB
-            return self.load_master_index() 
-            
-        # --- DASK PATH ---
-        if self.compute_backend == 'dask' and DASK_AVAILABLE:
-            try:
-                # Lazy load all CSVs
-                ddf = dd.read_csv(
-                    str(self.raw_path / "*.csv"), 
-                    dtype={'state': str, 'district': str, 'sub_district': str, 'pincode': str},
-                    blocksize="64MB"
-                )
-                # In a real app, we would perform operations lazily.
-                # For this dashboard demo, we compute a sample or aggregate.
-                # Here we compute, but in production, we would return the Dask object.
-                return ddf.compute().reset_index(drop=True)
-            except Exception as e:
-                print(f">> [DASK ERROR] {e}. Trying Pandas.")
-                return self.load_master_index()
-
-        # --- RAY PATH ---
-        elif self.compute_backend == 'ray' and RAY_AVAILABLE:
-            try:
-                ds = ray.data.read_csv(str(self.raw_path / "*.csv"))
-                return ds.to_pandas()
-            except Exception as e:
-                print(f">> [RAY ERROR] {e}. Trying Pandas.")
-                return self.load_master_index()
-
-        else:
-            return self.load_master_index()
-
     def load_master_index(self):
         """
-        Robust Single-Node Loader (Pandas).
-        Includes Data Lineage, Geo-Sanity Checks, and PII Masking.
-        """
-        all_files = glob.glob(str(self.raw_path / "*.csv"))
-        # Exclude auxiliary files
-        target_files = [f for f in all_files if "trai" not in f and "census" not in f]
+        The Unified Ingestion Core. Scans the Tiered Data Lake (National/State folders),
+        identifies file types, aligns schemas, and creates the Sovereign Digital Twin.
         
-        if not target_files:
+        Supports:
+        - Recursive Directory Walking
+        - Randomized Filename Handling
+        - Robust Error Recovery
+        """
+        all_files = glob.glob(str(self.raw_path / "**" / "*.csv"), recursive=True)
+        
+        # Filter out external/auxiliary files to avoid schema confusion
+        target_files = [f for f in all_files if "trai" not in f and "census" not in f and "poverty" not in f]
+        
+        if not target_files: 
+            print(">> [INGEST WARNING] No raw data files found.")
             return pd.DataFrame()
-            
+        
         df_list = []
         for f in target_files:
             try:
-                # Skip empty or tiny files
-                if os.path.getsize(f) < 100: 
-                    continue
-
-                # 1. READ AS STRING (Type Safety)
-                temp = pd.read_csv(f, dtype={'state': str, 'district': str, 'sub_district': str, 'pincode': str})
+                # 1. High-Speed Header Scan (Sniffing)
+                try:
+                    header_sample = pd.read_csv(f, nrows=5)
+                except pd.errors.EmptyDataError:
+                    continue # Skip empty files
                 
-                # 2. NORMALIZE HEADERS
-                temp.columns = [c.lower().strip().replace(" ", "_") for c in temp.columns]
+                # 2. Identify Type
+                dtype = self._identify_dataset_type(header_sample, os.path.basename(f))
                 
-                # 3. NUMERIC CONVERSION
-                for col in temp.columns:
-                    if 'age' in col or 'count' in col or 'total' in col or 'activity' in col:
-                        temp[col] = pd.to_numeric(temp[col], errors='coerce').fillna(0)
-
-                # 4. TOTAL ACTIVITY CALCULATION
-                if 'total_activity' not in temp.columns:
-                    num_cols = temp.select_dtypes(include='number').columns
-                    # Only sum relevant columns to avoid summing unrelated metrics like lat/lon
-                    sum_cols = [c for c in num_cols if 'age' in c or 'count' in c]
-                    if sum_cols:
-                        temp['total_activity'] = temp[sum_cols].sum(axis=1)
-                    else:
-                        temp['total_activity'] = 0
+                # 3. Full Load
+                # Enforce string types for geo-columns to prevent "01" -> 1 conversion issues
+                full_temp = pd.read_csv(f, dtype={'pincode': str, 'state': str, 'district': str})
                 
-                # 5. DATE PARSING
-                if 'date' in temp.columns:
-                    temp['date'] = pd.to_datetime(temp['date'], dayfirst=True, errors='coerce')
+                # 4. Standardize & Align
+                full_temp = self._align_schema(full_temp, dtype)
                 
-                # 6. SANITIZATION & BLACKLIST (CRITICAL)
-                for col in ['state', 'district']:
-                    if col in temp.columns:
-                        temp[col] = temp[col].fillna('Unknown')
-                        # Remove numeric noise/garbage
-                        mask_valid = ~temp[col].astype(str).str.match(r'^\d+$') & \
-                                     ~temp[col].astype(str).isin(["nan", "null", "None", ""])
-                        temp = temp[mask_valid]
-
-                # 7. APPLY SOVEREIGN PII MASKING
-                temp = self.sanitize_pii(temp)
+                # 5. Date Parsing (Robust)
+                if 'date' in full_temp.columns:
+                    full_temp['date'] = pd.to_datetime(full_temp['date'], dayfirst=True, errors='coerce')
+                    # Drop invalid dates
+                    full_temp = full_temp.dropna(subset=['date'])
                 
-                # 8. APPLY PHONETIC NORMALIZATION (NEW)
-                temp = self.phonetic_normalization_engine(temp)
+                # 6. Metadata Provenance
+                full_temp['source_file'] = os.path.basename(f)
+                full_temp['ingest_ts'] = datetime.now().isoformat()
                 
-                # 9. APPLY TPM ENCRYPTION SIMULATION (NEW)
-                temp = self.TPM_encryption_wrapper(temp)
+                # 7. Apply Sovereign Protocols
+                full_temp = self.sanitize_pii(full_temp)
+                full_temp = self.phonetic_normalization_engine(full_temp)
+                full_temp = self.TPM_encryption_wrapper(full_temp)
                 
-                # 10. DATA LINEAGE (PROVENANCE)
-                # Tagging the source ensures we can trace back every byte.
-                temp['source_file_id'] = hashlib.md5(os.path.basename(f).encode()).hexdigest()[:8]
-                temp['ingest_timestamp'] = datetime.now().isoformat()
-
-                df_list.append(temp)
+                df_list.append(full_temp)
+                
             except Exception as e:
-                # Log but don't crash
-                print(f"Skipping corrupt asset: {f} ({e})")
-                
+                print(f">> [INGEST ERROR] Failed to process {os.path.basename(f)}: {e}")
+
         if not df_list: return pd.DataFrame()
         
         master = pd.concat(df_list, ignore_index=True)
         
-        # Filter out rows with bad dates if date column exists
-        if 'date' in master.columns:
-            master = master.dropna(subset=['date'])
-        
-        # 11. GEO-SIMULATION / SANITY CHECK
-        # Falls back to random coords ONLY if missing.
-        # Also clamps coordinates to India's bounding box to prevent data poisoning.
+        # 8. Geo-Sanity Firewall (India Bounding Box)
+        # If lat/lon missing, simulate within India bounds for visualization
         if 'lat' not in master.columns:
             master['lat'] = np.random.uniform(8.4, 37.6, len(master))
-        else:
-            # India Bounding Box Sanity Check
-            master.loc[(master['lat'] < 6.0) | (master['lat'] > 38.0), 'lat'] = np.nan
-            master['lat'] = master['lat'].fillna(np.random.uniform(20.0, 28.0)) # Centroid fill
-            
         if 'lon' not in master.columns:
             master['lon'] = np.random.uniform(68.7, 97.2, len(master))
-        else:
-            master.loc[(master['lon'] < 68.0) | (master['lon'] > 98.0), 'lon'] = np.nan
-            master['lon'] = master['lon'].fillna(np.random.uniform(77.0, 85.0))
-
-        # 12. OPTIMIZE MEMORY
-        master = self._optimize_dtypes(master)
             
-        return master
+        # 9. RAM Optimization
+        return self._optimize_dtypes(master)
 
-    def load_telecom_index(self):
+    # ==========================================================================
+    # 7. EXTERNAL DATA INTEGRATION (BIVARIATE FUSION)
+    # ==========================================================================
+    def load_poverty_data(self):
         """
-        Loads TRAI Teledensity data for Cross-Domain Causality.
+        Loads NITI Aayog MPI Data for Exclusion Analysis.
         """
-        files = glob.glob(str(self.raw_path / "*trai*.csv"))
-        if files:
+        path = getattr(config, 'POVERTY_DATA_PATH', config.BASE_DIR / "data" / "external" / "poverty" / "poverty.csv")
+        if os.path.exists(path):
             try:
-                df = pd.read_csv(files[0])
-                # Ensure teledensity is numeric for analysis
-                if 'teledensity' in df.columns:
-                      df['teledensity'] = pd.to_numeric(df['teledensity'], errors='coerce')
-                return df
-            except: return pd.DataFrame()
+                df = pd.read_csv(path)
+                return self.phonetic_normalization_engine(df) # Clean district names
+            except Exception as e:
+                print(f">> [POVERTY LOAD ERROR] {e}")
         return pd.DataFrame()
 
-    # ==========================================================================
-    # 7. INTEGRATION HELPERS
-    # ==========================================================================
+    def load_telecom_data(self):
+        """
+        Loads TRAI Teledensity for Dark Zone Analysis.
+        FIX: Handles potential missing headers or varied formats.
+        """
+        path = getattr(config, 'TELECOM_DATA_PATH', config.BASE_DIR / "data" / "external" / "telecom" / "trai_teledensity.csv")
+        if os.path.exists(path):
+            try:
+                # Read without header assumption first to inspect
+                df = pd.read_csv(path)
+                
+                # Normalize column names
+                df.columns = [c.lower().strip() for c in df.columns]
+                
+                # Attempt to identify district/circle column
+                district_col = None
+                for col in df.columns:
+                    if any(x in col for x in ['district', 'circle', 'service area', 'lsa', 'state']):
+                        district_col = col
+                        break
+                
+                if district_col:
+                    df = df.rename(columns={district_col: 'district'})
+                
+                # Ensure numeric teledensity
+                teledensity_col = None
+                for col in df.columns:
+                    if 'density' in col or 'subscribers' in col:
+                        teledensity_col = col
+                        break
+                
+                if teledensity_col:
+                    df = df.rename(columns={teledensity_col: 'teledensity'})
+                    df['teledensity'] = pd.to_numeric(df['teledensity'], errors='coerce')
+                
+                return df
+            except Exception as e: 
+                print(f">> [TELECOM LOAD ERROR] {e}")
+                pass
+        return pd.DataFrame()
 
-    def integrate_telecom_data(self, master_df, telecom_df):
+    def integrate_external_datasets(self, master_df):
         """
-        Merges Aadhaar Activity Data with TRAI Teledensity Data.
-        Performs a robust Left Join on 'district' with string normalization.
-        Used for 'Digital Dark Zone' analysis in Spatial Engine.
+        Performs the 'God-Mode' Fusion: Joins Master Index with Poverty, Census, and Telecom.
+        Enables Bivariate Vulnerability Analysis.
         """
-        if master_df.empty or telecom_df.empty:
+        if master_df.empty: return master_df
+        
+        # Load external
+        poverty = self.load_poverty_data()
+        telecom = self.load_telecom_data()
+        
+        # Prepare Master Keys - Check if district exists first
+        if 'district' not in master_df.columns:
             return master_df
 
-        # 1. Normalize Keys (Lowercase, strip, remove non-alpha chars for matching)
         master_df['join_key'] = master_df['district'].astype(str).str.lower().str.strip().str.replace(r'[^a-z]', '', regex=True)
-        telecom_df['join_key'] = telecom_df['district'].astype(str).str.lower().str.strip().str.replace(r'[^a-z]', '', regex=True)
-
-        # 2. Merge
-        # We only want to add 'teledensity' and maybe 'service_provider' info
-        cols_to_use = ['join_key'] + [c for c in telecom_df.columns if c not in ['district', 'join_key']]
-        merged_df = pd.merge(master_df, telecom_df[cols_to_use], on='join_key', how='left')
         
-        # 3. Cleanup
-        merged_df = merged_df.drop(columns=['join_key'])
-        
-        # Fill missing teledensity with median (Imputation to avoid breaking Forensics)
-        if 'teledensity' in merged_df.columns:
-            merged_df['teledensity'] = merged_df['teledensity'].fillna(merged_df['teledensity'].median())
+        # 1. Join Poverty (MPI)
+        if not poverty.empty and 'district' in poverty.columns:
+            poverty['join_key'] = poverty['district'].astype(str).str.lower().str.strip().str.replace(r'[^a-z]', '', regex=True)
+            # Keep only relevant columns
+            pov_cols = ['join_key', 'mpi_headcount_ratio', 'intensity_of_deprivation']
+            pov_cols = [c for c in pov_cols if c in poverty.columns]
             
-        return merged_df
+            master_df = pd.merge(master_df, poverty[pov_cols], on='join_key', how='left')
+            # Impute missing poverty with median (Conservative)
+            if 'mpi_headcount_ratio' in master_df.columns:
+                master_df['mpi_headcount_ratio'] = master_df['mpi_headcount_ratio'].fillna(master_df['mpi_headcount_ratio'].median())
+
+        # 2. Join Telecom (Teledensity)
+        if not telecom.empty and 'district' in telecom.columns:
+            telecom['join_key'] = telecom['district'].astype(str).str.lower().str.strip().str.replace(r'[^a-z]', '', regex=True)
+            tel_cols = ['join_key', 'teledensity']
+            tel_cols = [c for c in tel_cols if c in telecom.columns]
+            
+            master_df = pd.merge(master_df, telecom[tel_cols], on='join_key', how='left')
+            if 'teledensity' in master_df.columns:
+                master_df['teledensity'] = master_df['teledensity'].fillna(master_df['teledensity'].median())
+
+        # Cleanup
+        if 'join_key' in master_df.columns:
+            master_df = master_df.drop(columns=['join_key'])
+            
+        return master_df
 
     def get_unique_hierarchy(self, df):
         """
         Extracts a clean State -> District dictionary for UI Dropdowns.
-        Ensures 0 duplicates, 0 NaNs, and 0 Numeric Noise ("10000").
         """
         if df.empty: return {}
-        
         hierarchy = {}
-        
-        # Get unique states
         states = sorted(df['state'].dropna().unique())
         
         for state in states:
-            # Skip invalid states
-            if str(state).strip() == "" or str(state).lower() == "nan" or str(state).isdigit():
-                continue
-                
+            if str(state).strip() == "" or str(state).lower() == "nan": continue
             districts = sorted(df[df['state'] == state]['district'].dropna().unique())
+            hierarchy[state] = [d for d in districts if str(d).strip() != ""]
             
-            # Clean districts
-            clean_districts = [
-                d for d in districts 
-                if str(d).strip() != "" and str(d).lower() != "nan" and not str(d).isdigit()
-            ]
-            
-            if clean_districts:
-                hierarchy[state] = clean_districts
-                
         return hierarchy

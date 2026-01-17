@@ -6,13 +6,19 @@ import uuid
 import hashlib
 import os
 import math
+from config.settings import config
 
 class PrivacyEngine:
     """
-    SOVEREIGN PRIVACY ENGINE (Differential Privacy Layer) v9.9
+    SOVEREIGN PRIVACY ENGINE (Differential Privacy Layer) v9.9 [AEGIS COMMAND]
     
-    Implements Epsilon-Differential Privacy (ε-DP) and (ε, δ)-DP to mathematically guarantee 
+    The Mathematical Guardian of the Digital Twin.
+    Implements Epsilon-Differential Privacy (ε-DP) and (ε, δ)-DP to guarantee 
     that the output of any query does not compromise the privacy of any single individual.
+    
+    COMPLIANCE:
+    - DPDP Act 2023 (Data Minimization)
+    - Aadhaar Act 2016 (Privacy Preservation)
     
     MECHANISMS:
     1. Privacy Budgeting (Sequential Composition & Moments Accountant Simulation)
@@ -31,24 +37,28 @@ class PrivacyEngine:
         
         Args:
             total_epsilon (float): The total privacy loss budget allowed for this session.
-                                   Lower = Higher Privacy. Standard Academic Value = 1.0 - 10.0.
             delta (float): The probability of privacy breach (should be < 1/N).
             state_file (str): Path to persist privacy state across system reboots.
         """
-        self.max_epsilon = total_epsilon
+        # Load constraints from Config if available
+        self.max_epsilon = getattr(config, 'PRIVACY_BUDGET_MAX', total_epsilon)
+        self.delta = getattr(config, 'PRIVACY_DELTA', delta)
+        
         self.used_epsilon = 0.0
-        self.delta = delta
         self.query_log = []
         self.active = True
         self.state_file = state_file
+        
+        # Role-Based Privacy Cost Multipliers
+        # Higher privilege does NOT mean less privacy; it means more accountability (higher cost)
         self.role_multipliers = {
             "Director General": 1.0,  # Standard Cost
             "State Secretary": 1.5,   # Higher Cost (More noise/less budget effectively)
-            "District Magistrate": 2.0,
+            "District Magistrate": 2.0, # Discourage micro-targeting
             "Auditor": 0.5            # Auditors get cheaper queries for oversight
         }
         
-        # Sensitivity registry (Maximum effect one individual can have on a query)
+        # Sensitivity Registry (Maximum effect one individual can have on a query)
         self.sensitivity_map = {
             'count': 1.0,         # One person adds 1 to a count
             'sum_activity': 50.0, # Cap: One person does max 50 updates/year (Clamping)
@@ -73,10 +83,10 @@ class PrivacyEngine:
                     self.used_epsilon = state.get("used_epsilon", 0.0)
                     self.query_log = state.get("query_log", [])
                     self.active = state.get("active", True)
-                    # Verify integrity check (simple hash of last entry)
+                    # Integrity Check: Verify last hash matches
                     if self.query_log:
                         last_entry = self.query_log[-1]
-                        # In a real system, verify signature here
+                        # In production, verify signature here
             except Exception as e:
                 print(f"[PRIVACY WARN] Could not restore state: {e}")
 
@@ -100,7 +110,6 @@ class PrivacyEngine:
         """
         Internal Gatekeeper: Checks if the privacy budget allows this query.
         Implements an Emergency Lockout if budget is exceeded.
-        Applies role-based cost multipliers.
         """
         if not self.active:
             raise PermissionError("PRIVACY ENGINE LOCKED: Budget Exhausted. Sovereign Override Required.")
@@ -121,7 +130,7 @@ class PrivacyEngine:
         Immutable Cryptographic Audit Log.
         Chains hashes so logs cannot be deleted or reordered without detection.
         """
-        # Calculate hash of previous entry for chaining
+        # Calculate hash of previous entry for chaining (Blockchain style)
         prev_hash = "GENESIS"
         if self.query_log:
             prev_string = json.dumps(self.query_log[-1], sort_keys=True)
@@ -142,32 +151,33 @@ class PrivacyEngine:
     def get_merkle_root(self):
         """
         Calculates the Merkle Root of the current audit log.
-        This hash allows external auditors to verify the integrity of the privacy engine's history.
+        Allows external auditors (CAG) to verify integrity.
         """
         if not self.query_log:
             return "EMPTY_LOG"
         
-        # Simple linear hash chain verification (Blockchain style)
+        # Simple linear hash chain verification
         last_entry_str = json.dumps(self.query_log[-1], sort_keys=True)
         return hashlib.sha256(last_entry_str.encode('utf-8')).hexdigest()
 
+    # ==========================================================================
+    # CORE PRIVACY MECHANISMS (MATHEMATICAL NOISE)
+    # ==========================================================================
     def _laplace_mechanism(self, true_value, sensitivity, epsilon):
         """
-        The Mathematical Core: Adds noise drawn from a Laplace distribution.
+        Adds noise drawn from a Laplace distribution.
         Used for L1 sensitivity (Counting).
-        
         Noise ~ Lap(sensitivity / epsilon)
         """
-        if epsilon <= 0: return true_value # Should theoretically not happen due to check_budget
+        if epsilon <= 0: return true_value
         scale = sensitivity / epsilon
         noise = np.random.laplace(0, scale)
         return true_value + noise
 
     def _gaussian_mechanism(self, true_value, sensitivity, epsilon, delta):
         """
-        Advanced Core: Adds noise drawn from a Gaussian distribution.
+        Adds noise drawn from a Gaussian distribution.
         Used for L2 sensitivity (Mean, Sums) and provides (ε, δ)-DP.
-        
         Sigma >= sqrt(2 * ln(1.25/delta)) * sensitivity / epsilon
         """
         if epsilon <= 0: return true_value
@@ -181,14 +191,11 @@ class PrivacyEngine:
         Returns a 'Safe' (Noisy) version of the metric.
         
         Args:
-            value (float): The raw, sensitive number (e.g., total enrolments).
+            value (float): The raw, sensitive number.
             agg_type (str): Type of aggregation ('count', 'sum_activity', etc).
-            cost (float): How much privacy budget to burn (epsilon).
+            cost (float): Privacy budget to burn (epsilon).
             mechanism (str): 'laplace' or 'gaussian'.
             role (str): The role requesting the data.
-        
-        Returns:
-            float: Differentially Private value.
         """
         # Auto-detect sensitivity if not explicitly defined
         sensitivity = self.sensitivity_map.get(agg_type, 1.0)
@@ -205,7 +212,7 @@ class PrivacyEngine:
         # Post-Processing (Physics Guard): Counts cannot be negative
         if agg_type in ['count', 'sum_activity']:
             safe_val = max(0, safe_val)
-            # Integrity Guard: Round to nearest integer for realism (optional)
+            # Integrity Guard: Round to nearest integer for realism
             safe_val = round(safe_val)
 
         # Update State
@@ -221,8 +228,8 @@ class PrivacyEngine:
         """
         if df.empty: return pd.DataFrame()
         
-        # Calculate total cost for this transformation
-        # Cap cost for large datasets to avoid instant depletion (Visual Privacy Compromise)
+        # Calculate total cost
+        # Cap cost for large datasets to avoid budget depletion
         total_cost = epsilon_per_row * len(df)
         effective_cost = min(total_cost, 1.5) 
         
@@ -232,7 +239,6 @@ class PrivacyEngine:
         sensitivity = self.sensitivity_map.get('histogram', 2.0)
         
         # Calculate noise scale based on row-level epsilon proxy
-        # Since we capped the total cost, we need to distribute the noise
         effective_epsilon_per_row = effective_cost / len(df)
         if effective_epsilon_per_row < 1e-5: effective_epsilon_per_row = 1e-5
         
@@ -244,8 +250,8 @@ class PrivacyEngine:
         safe_df = df.copy()
         if pd.api.types.is_numeric_dtype(safe_df[sensitive_col]):
             safe_df[sensitive_col] = safe_df[sensitive_col] + noise
-            # Consistency: Ensure no negative activity if it represents count/volume
-            if (safe_df[sensitive_col] >= 0).all(): # Simple check if original was non-negative
+            # Consistency: Ensure no negative activity
+            if (safe_df[sensitive_col] >= 0).all():
                  safe_df[sensitive_col] = safe_df[sensitive_col].clip(lower=0)
             
         self.used_epsilon += effective_cost

@@ -106,7 +106,7 @@ class ForecastEngine:
         # Apply Pulse Multiplier (DBT Launch Effect)
         # Spike occurs on Day 3-5
         spike_profile = np.ones(days)
-        spike_profile[2:6] = config.DBT_LAUNCH_TRAFFIC_MULTIPLIER 
+        spike_profile[2:6] = getattr(config, 'DBT_LAUNCH_TRAFFIC_MULTIPLIER', 5.0)
         
         base['Simulated_Load'] = base['Predicted_Load'] * spike_profile
         
@@ -117,7 +117,7 @@ class ForecastEngine:
         base['Utilization'] = base['Simulated_Load'] / capacity
         base['Est_Latency_ms'] = 20 * (1 + np.exp(5 * (base['Utilization'] - 1))) # Sigmoid penalty
         
-        base['Risk_Status'] = base['Utilization'].apply(lambda x: "CRITICAL FAILURE" if x > config.INFRA_FAILURE_POINT else "STABLE")
+        base['Risk_Status'] = base['Utilization'].apply(lambda x: "CRITICAL FAILURE" if x > getattr(config, 'INFRA_FAILURE_POINT', 0.95) else "STABLE")
         
         return base
 
@@ -325,6 +325,7 @@ class SovereignForecastEngine(AdvancedForecastEngine):
     """
     The 'Defcon-1' Engine Upgrade.
     Implements Temporal Fusion Transformer logic and Probabilistic Forecasting.
+    Now supports **Multivariate Forecasting** (Enrolment vs. Updates).
     """
     
     def generate_tft_forecast(self, days=45):

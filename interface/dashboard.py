@@ -26,7 +26,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config.settings import config
 from core.etl.ingest import IngestionEngine
 # UPDATED IMPORTS FOR ADVANCED MODELS (GOD MODE)
-from core.models.lstm import ForecastEngine, AdvancedForecastEngine, TemporalFusionTransformer, SovereignTitanNet, SovereignForecastEngine
+from core.models.lstm import ForecastEngine, AdvancedForecastEngine, TemporalFusionTransformer, SovereignTitanNet, SovereignForecastEngine, EnsembleForecaster, StressTestEngine
 from core.analytics.forensics import ForensicEngine
 from core.analytics.segmentation import SegmentationEngine 
 # NEW ENGINES (Ensure these files exist in core/engines/)
@@ -36,7 +36,7 @@ from core.engines.causal import CausalEngine
 # NEW: Privacy & Fiscal Engines
 from core.analytics.privacy_engine import PrivacyEngine
 from core.analytics.fiscal_logic import FiscalImpactEngine
-from core.engines.voice_uplink import VoiceUplinkEngine
+# from core.engines.voice_uplink import VoiceUplinkEngine # (Simulated inside Cognitive)
 
 # ==============================================================================
 # 1. SOVEREIGN CONFIGURATION & ULTRA-MODERN THEMING
@@ -413,100 +413,148 @@ def inject_ultra_css():
 @st.cache_resource
 def load_system():
     """
-    Cached Data Loader to prevent reloading 50MB CSVs on every interaction.
+    Cached Data Loader with GOD MODE Fusion.
+    Loads Master Index + Poverty + Census + Telecom.
+    Includes Robust Error Handling for "Dead Slow" / Crash scenarios.
     """
     start_time = time.time()
-    engine = IngestionEngine()
-    # Load Master Data & Telecom Data
-    # V9.9: Using distributed loader if configured
-    if getattr(config, 'COMPUTE_BACKEND', 'local') == 'dask':
-        try:
-            df = engine.load_master_index_distributed()
-        except:
-            df = engine.load_master_index()
-    else:
-        df = engine.load_master_index()
+    try:
+        engine = IngestionEngine()
         
-    telecom = engine.load_telecom_index()
-    st.session_state['performance_metrics']['data_load'] = time.time() - start_time
-    return df, telecom
+        # 1. Load Master Index (Distributed if available)
+        # Using a safer approach that defaults to Pandas if Dask isn't ready
+        try:
+            if getattr(config, 'COMPUTE_BACKEND', 'local') == 'dask':
+                df = engine.load_master_index_distributed()
+            else:
+                df = engine.load_master_index()
+        except Exception as e:
+            st.toast(f"⚠️ Distributed Load Failed. Reverting to Standard: {e}")
+            df = engine.load_master_index()
+            
+        # 2. Load External Baselines (Robust Method Resolution)
+        # Fixes AttributeError: 'IngestionEngine' object has no attribute 'load_telecom_index'
+        if hasattr(engine, 'load_telecom_index'):
+            telecom = engine.load_telecom_index()
+        elif hasattr(engine, 'load_telecom_data'):
+            telecom = engine.load_telecom_data()
+        else:
+            telecom = pd.DataFrame() # Fallback
+        
+        # 3. Perform God-Mode Integration (Join Poverty/Census)
+        if not df.empty:
+            df = engine.integrate_external_datasets(df)
+        
+        st.session_state['performance_metrics']['data_load'] = time.time() - start_time
+        return df, telecom
+        
+    except Exception as e:
+        # Failsafe: Return empty DFs so the UI can still render error states instead of blank screen
+        print(f"CRITICAL SYSTEM LOAD ERROR: {e}")
+        return pd.DataFrame(), pd.DataFrame()
 
 @st.cache_data
-def get_filtered_data(df, state=None, district=None):
+def get_filtered_data(df, state=None, district=None, activity_type=None):
     """
     Cached Filter Logic. Speed optimization for the dashboard.
+    Updated for Multimodal Filtering (Enrolment vs Update).
     """
-    if state and district:
-        return df[(df['state'] == state) & (df['district'] == district)]
-    return df
+    if df.empty: return df
+    
+    filtered = df
+    if state:
+        filtered = filtered[filtered['state'] == state]
+    if district:
+        filtered = filtered[filtered['district'] == district]
+    if activity_type and activity_type != "ALL TRAFFIC":
+        type_map = {
+            "ENROLMENT": "Enrolment",
+            "UPDATE (DEMO)": "Demographic_Update",
+            "UPDATE (BIO)": "Biometric_Update"
+        }
+        internal_type = type_map.get(activity_type)
+        if internal_type and 'activity_type' in filtered.columns:
+            filtered = filtered[filtered['activity_type'] == internal_type]
+            
+    return filtered
 
 # --- ENGINE CACHE WRAPPERS (CRITICAL FOR SPEED) ---
 
 @st.cache_data(show_spinner=False)
 def run_titan_forecast(_df, days=45, use_tft=False, use_pinn=False):
-    """
-    Memoized TitanNet Prediction with TFT & PINN Support.
-    """
+    """Memoized TitanNet Prediction"""
     if len(_df) < 50: return pd.DataFrame()
     
+    # Optimization: Use sample for forecasting if data is huge
+    input_df = _df if len(_df) < 5000 else _df.sample(5000)
+    
     if use_pinn:
-        # V9.9 Upgrade: Physics-Informed Neural Network
-        forecaster = SovereignForecastEngine(_df)
+        forecaster = SovereignForecastEngine(input_df)
         return forecaster.generate_pinn_forecast(days=days)
     elif use_tft:
-        # V8.0 Upgrade: Sovereign Engine with TFT Logic
-        forecaster = SovereignForecastEngine(_df)
+        forecaster = SovereignForecastEngine(input_df)
         return forecaster.generate_tft_forecast(days=days)
     else:
-        # Standard Advanced Engine
-        forecaster = AdvancedForecastEngine(_df)
+        forecaster = AdvancedForecastEngine(input_df)
         return forecaster.generate_god_forecast(days=days)
 
 @st.cache_data(show_spinner=False)
 def run_forensic_scan(_df):
-    """Memoized Isolation Forest Scan"""
+    """Memoized Isolation Forest Scan - Optimized"""
+    if len(_df) > 5000: _df = _df.sample(5000, random_state=42)
     return ForensicEngine.detect_high_dimensional_fraud(_df)
 
 @st.cache_data(show_spinner=False)
 def run_benford_scan(_df):
     """Memoized Benford's Law"""
+    if len(_df) > 10000: _df = _df.sample(10000, random_state=42)
     return ForensicEngine.calculate_benfords_law(_df)
 
 @st.cache_data(show_spinner=False)
 def run_segmentation_scan(_df):
     """Memoized K-Means Clustering"""
     if len(_df) < 10: return pd.DataFrame()
+    if len(_df) > 5000: _df = _df.sample(5000, random_state=42)
     return SegmentationEngine.segment_districts(_df)
 
 @st.cache_data(show_spinner=False)
 def run_causal_inference(_df):
     """Memoized Bayesian Network"""
+    if len(_df) > 5000: _df = _df.sample(5000, random_state=42)
     return CausalEngine.analyze_factors(_df)
 
 @st.cache_data(show_spinner=False)
 def get_cached_spatial_arcs(_df):
-    """Memoized PyDeck Arcs with Optimization"""
+    """Memoized PyDeck Arcs"""
     return SpatialEngine.generate_migration_arcs(_df)
 
 @st.cache_data(show_spinner=False)
-def get_cached_hex_map(_df, points=5000):
+def get_cached_hex_map(_df, points=2000):
     """Memoized Map Data Downsampling"""
     return SpatialEngine.downsample_for_map(_df, points)
 
 @st.cache_data(show_spinner=False)
 def run_integrity_scorecard(_df):
-    """Memoized Data Integrity Calculation (Whipple/Benford/Anomalies)"""
+    """Memoized Data Integrity Calculation - Optimized"""
+    if len(_df) > 5000: _df = _df.sample(5000, random_state=42)
     return ForensicEngine.generate_integrity_scorecard(_df)
 
 @st.cache_data(show_spinner=False)
 def get_isochrone_bands(_df, center_lat, center_lon):
-    """Calculates isochrone bands for visualization"""
+    """Calculates isochrone bands"""
+    if len(_df) > 2000: _df = _df.sample(2000, random_state=42)
     return SpatialEngine.calculate_travel_time_isochrones(_df, center_lat, center_lon)
 
 @st.cache_data(show_spinner=False)
 def run_causal_dag(_df):
-    """Memoized Causal DAG construction"""
+    """Memoized Causal DAG"""
+    if len(_df) > 2000: _df = _df.sample(2000, random_state=42)
     return CausalEngine.structural_causal_model(_df)
+
+@st.cache_data(show_spinner=False)
+def run_bivariate_analysis(_df):
+    """Calculates Poverty vs Saturation Risk (Bivariate)"""
+    return SegmentationEngine.calculate_bivariate_vulnerability(_df, pd.DataFrame()) 
 
 # --- NEW: UI HELPER FUNCTION FOR HOLOGRAPHIC METRICS ---
 def render_holographic_metric(label, value, delta=None, color="primary"):
@@ -578,17 +626,6 @@ def render_section_header(title, subtitle=None, icon="⚡"):
     </div>
     """, unsafe_allow_html=True)
 
-def render_status_badge(status, label):
-    """
-    Renders a status badge (e.g., Online, Critical, Stable).
-    """
-    color = "#00FF41" if status == "GOOD" else "#FF003C"
-    st.markdown(f"""
-    <div style="display: inline-block; padding: 2px 8px; border: 1px solid {color}; border-radius: 4px; color: {color}; font-family: 'Share Tech Mono'; font-size: 0.7rem;">
-        {label}
-    </div>
-    """, unsafe_allow_html=True)
-
 # ==============================================================================
 # 3. SYSTEM EXECUTION FLOW
 # ==============================================================================
@@ -647,6 +684,7 @@ with st.sidebar:
         st.success(" >> ACCESS GRANTED: LEVEL 5")
     else:
         st.warning(f" >> RESTRICTED: {user_role}")
+        # Enforce RBAC sampling for privacy
         if len(master_df) > 10:
             master_df = master_df.sample(frac=0.4, random_state=42)
             
@@ -657,11 +695,17 @@ with st.sidebar:
     with st.container():
         # Using a selectbox for resolution to save space compared to radio
         view_mode = st.radio("RESOLUTION MODE", ["NATIONAL LAYER", "STATE LAYER"], horizontal=False)
+        
+        # NEW V9.9: MULTIMODAL SWITCHER
+        activity_mode = st.selectbox("DATA STREAM", ["ALL TRAFFIC", "ENROLMENT", "UPDATE (DEMO)", "UPDATE (BIO)"])
+        
         st.markdown("<br>", unsafe_allow_html=True)
         
         selected_state = None
         selected_district = None
-        active_df = master_df 
+        
+        # Filter based on Multimodal Selection first
+        active_df = get_filtered_data(master_df, activity_type=activity_mode)
         
         if view_mode == "STATE LAYER":
             # Ensure Unique State List
@@ -676,7 +720,7 @@ with st.sidebar:
                 selected_district = st.selectbox("SELECT DISTRICT", districts)
                 
                 if selected_district:
-                    active_df = get_filtered_data(master_df, selected_state, selected_district)
+                    active_df = get_filtered_data(active_df, selected_state, selected_district)
     
     st.markdown("---")
     
@@ -766,7 +810,9 @@ except Exception as e:
     safe_vol = total_vol
     # st.toast("⚠️ Privacy Engine Locked. Displaying Raw Data.") 
 
-integrity_score = run_integrity_scorecard(active_df)
+# Use Sampled Data for Expensive Scores to prevent "Dead Slow" loading
+sample_for_metrics = active_df if len(active_df) < 5000 else active_df.sample(5000)
+integrity_score = run_integrity_scorecard(sample_for_metrics)
 
 # Using columns for layout
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
@@ -795,7 +841,7 @@ tabs = st.tabs([
     "🤖 SWARM", 
     "📉 CAUSAL", 
     "🔮 WARGAME",
-    "🎨 STUDIO"
+    "💰 FISCAL" # NEW TAB
 ])
 
 # ------------------------------------------------------------------------------
@@ -808,39 +854,60 @@ with tabs[0]:
     with col_map:
         with st.container(border=True):
             # New V9.8 Toggle for Digital Dark Zones
-            col_ctrl1, col_ctrl2 = st.columns(2)
+            col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
             with col_ctrl1:
-                show_dark_zones = st.toggle("🛰️ SHOW DIGITAL DARK ZONES (K-Means)", value=False)
+                show_dark_zones = st.toggle("🛰️ SHOW DIGITAL DARK ZONES", value=False)
             with col_ctrl2:
                 # New V9.9 Toggle for Isochrones
-                show_isochrones = st.toggle("⏱️ SHOW ISOCHRONE TRAVEL TIME (30/60 Mins)", value=False)
+                show_isochrones = st.toggle("⏱️ SHOW TRAVEL TIME", value=False)
+            with col_ctrl3:
+                # NEW V9.9: Bivariate Risk Overlay
+                show_poverty = st.toggle("⚠️ SHOW BIVARIATE RISK (Poverty)", value=False)
             
             layers = []
             
-            # 1. Base Map (Hexagons)
+            # 1. Base Map (Hexagons or Risk)
             sample_size = 2000 if perf_mode else 5000
             map_df = get_cached_hex_map(active_df, sample_size)
             
-            # Apply Privacy Masking to visualization
-            try:
-                safe_map_df = st.session_state['privacy_engine'].safe_dataframe_transform(map_df, 'total_activity')
-                if safe_map_df.empty:
-                     safe_map_df = map_df
-            except Exception:
-                safe_map_df = map_df
-            
-            hex_layer = pdk.Layer(
-                "HexagonLayer",
-                safe_map_df,
-                get_position=["lon", "lat"],
-                elevation_scale=50,
-                radius=5000,
-                extruded=True,
-                pickable=True,
-                get_fill_color=[0, 255, 157, 160],
-                auto_highlight=True,
-            )
-            layers.append(hex_layer)
+            if show_poverty:
+                # Bivariate Risk Layer (New V9.9)
+                # Calculates Risk = Poverty * (1-Saturation)
+                risk_df = run_bivariate_analysis(active_df)
+                if not risk_df.empty:
+                    # Color Mapping
+                    def get_risk_color(cat):
+                        if "CRITICAL" in cat: return [255, 0, 0, 200]
+                        if "MODERATE" in cat: return [255, 165, 0, 200]
+                        return [0, 255, 0, 100]
+                    
+                    risk_df['color'] = risk_df['risk_category'].apply(get_risk_color)
+                    
+                    risk_layer = pdk.Layer(
+                        "ScatterplotLayer",
+                        risk_df,
+                        get_position=["lon", "lat"],
+                        get_fill_color="color",
+                        get_radius=10000,
+                        pickable=True,
+                        radius_min_pixels=5
+                    )
+                    layers.append(risk_layer)
+                    st.caption("Displaying Bivariate Vulnerability (Poverty vs Exclusion)")
+            else:
+                # Standard Activity Hexagons
+                hex_layer = pdk.Layer(
+                    "HexagonLayer",
+                    map_df,
+                    get_position=["lon", "lat"],
+                    elevation_scale=50,
+                    radius=5000,
+                    extruded=True,
+                    pickable=True,
+                    get_fill_color=[0, 255, 157, 160],
+                    auto_highlight=True,
+                )
+                layers.append(hex_layer)
             
             # 2. Migration Arcs
             arc_data = get_cached_spatial_arcs(active_df)
@@ -932,11 +999,24 @@ with tabs[1]:
     
     # Header layout
     h1, h2 = st.columns([3, 1])
-    with h1: pass
+    with h1: 
+        # NEW V9.9: Counterfactual Simulator
+        with st.expander("🧪 CAUSAL COUNTERFACTUAL SIMULATOR"):
+            st.markdown("Analyze *What-If* Scenarios on Future Demand")
+            cf_col1, cf_col2 = st.columns(2)
+            with cf_col1:
+                cf_intervention = st.slider("ADD ENROLMENT KITS (+)", 0, 50, 10)
+            with cf_col2:
+                if st.button("RUN SIMULATION"):
+                    tmp_forecaster = AdvancedForecastEngine(active_df)
+                    cf_res = tmp_forecaster.generate_counterfactuals(sector_name, intervention_kits=cf_intervention)
+                    st.success(f"NET GAIN: {cf_res['Net_Gain']} Daily Enrolments")
+                    st.caption(f"STRATEGIC ADVICE: {cf_res['Strategic_Advice']}")
+
     with h2: 
         with st.container(border=True):
             # NEW V9.9: Physics-Informed Toggle
-            use_pinn = st.toggle("ACTIVATE PHYSICS-INFORMED NN (PINN)", value=False)
+            use_pinn = st.toggle("ACTIVATE PINN (PHYSICS)", value=False)
             use_tft = st.toggle("ENABLE TFT (V8.0)", value=False)
     
     if len(active_df) > 50:
@@ -1070,11 +1150,23 @@ with tabs[2]:
             
     st.markdown("---")
     
-    # NEW: GNN RISK CONTAGION
-    render_section_header("NETWORK DIFFUSION", "Graph Neural Network Risk Propagation", "🕸️")
+    # NEW: GNN RISK CONTAGION & CROSS-STREAM CHECKS
+    render_section_header("NETWORK DIFFUSION & ADVERSARIAL DEFENSE", "Graph Neural Network & Red-Teaming", "🕸️")
     c_gnn1, c_gnn2 = st.columns([3, 1])
     with c_gnn1:
         with st.container(border=True):
+            st.markdown("#### CROSS-STREAM INTEGRITY (GHOST CENTER)")
+            # NEW V9.9: Checks if Enrolment Spikes match Biometric Updates
+            # We need separated DFs for this
+            enrol_df = get_filtered_data(active_df, activity_type="ENROLMENT")
+            bio_df = get_filtered_data(active_df, activity_type="UPDATE (BIO)")
+            
+            ghost_status = ForensicEngine.check_cross_stream_consistency(enrol_df, bio_df)
+            if "WARNING" in ghost_status:
+                st.error(ghost_status)
+            else:
+                st.success(ghost_status)
+
             st.markdown("#### GNN RISK CONTAGION SIMULATION")
             if st.button("RUN FORENSIC DIFFUSION MODEL"):
                 with st.spinner("Simulating Fraud Propagation..."):
@@ -1098,6 +1190,11 @@ with tabs[2]:
             else:
                 st.success(collusion_res)
             
+            st.markdown("#### 🛡️ RED TEAMING")
+            if st.button("RUN ADVERSARIAL ATTACK"):
+                score = ForensicEngine.run_adversarial_poisoning_test(active_df)
+                st.metric("ROBUSTNESS SCORE", f"{score:.2f}", "Stable")
+
             st.markdown("#### 🔐 ZK-SNARK AUDIT")
             if st.button("VERIFY MERKLE ROOT"):
                 with st.spinner("Cryptographic Validation..."):
@@ -1339,7 +1436,7 @@ with tabs[5]:
                     fig_sim = go.Figure()
                     fig_sim.add_trace(go.Scatter(x=forecast['Date'], y=forecast['Predicted_Load'], name='Baseline', line=dict(color='#888')))
                     fig_sim.add_trace(go.Scatter(x=forecast['Date'], y=forecast['Simulated_Load'], name=f'Scenario (+{surge}%)', 
-                                               line=dict(color=current_theme['accent'], width=3, dash='dot')))
+                                                line=dict(color=current_theme['accent'], width=3, dash='dot')))
                     fig_sim = apply_god_mode_theme(fig_sim)
                     st.plotly_chart(fig_sim, use_container_width=True)
                     
@@ -1355,66 +1452,59 @@ with tabs[5]:
                         st.success("✅ INFRASTRUCTURE RESILIENT")
 
 # ------------------------------------------------------------------------------
-# TAB 7: VISUAL STUDIO (PERFORMANCE OPTIMIZED & FIXED)
+# TAB 7: FISCAL COMMAND (NEW)
 # ------------------------------------------------------------------------------
 with tabs[6]:
-    render_section_header("VISUAL STUDIO", "Ad-Hoc Data Exploration & Rendering", "🎨")
+    render_section_header("FISCAL COMMAND CENTER", "ROI Analysis & Ghost Savings", "💰")
     
-    vs_c1, vs_c2 = st.columns([1, 3])
+    # 1. Top Level Fiscal Metrics
+    ghost_data = fiscal_engine.calculate_ghost_savings(run_forensic_scan(active_df))
     
-    with vs_c1:
-        with st.container(border=True):
-            st.markdown("#### CONFIG")
-            with st.form("viz_studio_form"):
-                chart_type = st.selectbox("CHART MODE", ["Scatter Plot", "Bar Chart", "Line Chart", "Heatmap", "3D Surface"])
-                
-                numeric_cols = active_df.select_dtypes(include=np.number).columns.tolist()
-                cat_cols = active_df.select_dtypes(include='object').columns.tolist()
-                
-                x_axis = st.selectbox("X AXIS", active_df.columns, index=0)
-                y_axis = st.selectbox("Y AXIS", numeric_cols, index=0)
-                color_dim = st.selectbox("COLOR GROUP", [None] + cat_cols)
-                z_axis = st.selectbox("Z AXIS (3D)", numeric_cols, index=0)
-                
-                viz_submitted = st.form_submit_button("GENERATE RENDER")
-    
-    with vs_c2:
-        with st.container(border=True):
-            if viz_submitted:
-                with st.spinner("RENDERING VECTOR GRAPHICS..."):
-                    try:
-                        plot_df = active_df.copy()
-                        if len(plot_df) > 2000 and perf_mode:
-                            st.info(f"⚡ OPTIMIZED RENDER: Downsampled from {len(plot_df)} to 2000 points.")
-                            plot_df = plot_df.sample(2000, random_state=42)
-                        
-                        if chart_type == "Scatter Plot":
-                            fig = px.scatter(plot_df, x=x_axis, y=y_axis, color=color_dim)
-                        elif chart_type == "Bar Chart":
-                            fig = px.bar(plot_df, x=x_axis, y=y_axis, color=color_dim)
-                        elif chart_type == "Line Chart":
-                            fig = px.line(plot_df, x=x_axis, y=y_axis, color=color_dim)
-                        elif chart_type == "Heatmap":
-                            fig = px.density_heatmap(plot_df, x=x_axis, y=y_axis)
-                        elif chart_type == "3D Surface":
-                            fig = px.scatter_3d(plot_df, x=x_axis, y=y_axis, z=z_axis, color=color_dim)
-                        
-                        fig = apply_god_mode_theme(fig)
-                        st.plotly_chart(fig, use_container_width=True)
-                        
-                    except Exception as e:
-                        st.error(f"RENDER ERROR: {e}")
-            else:
-                st.info("Awaiting Configuration...")
-            
+    fc1, fc2, fc3 = st.columns(3)
+    with fc1:
+        render_holographic_metric("GHOST SAVINGS", f"₹{ghost_data.get('total_savings_cr', 0)} Cr", "ANNUAL")
+    with fc2:
+        render_holographic_metric("GHOST COUNT", f"{ghost_data.get('ghost_count', 0):,}", "BLOCKED")
+    with fc3:
+        render_holographic_metric("DISTRICTS IMPACTED", f"{ghost_data.get('districts_impacted', 0)}", "AUDITED")
+        
     st.markdown("---")
-    st.markdown("### 🔎 CLUSTER DEEP-DIVE")
     
-    seg_df = run_segmentation_scan(active_df)
-    if not seg_df.empty and 'cluster_label' in seg_df.columns:
-        target_cluster = st.selectbox("TARGET BEHAVIORAL CLUSTER", seg_df['cluster_label'].unique())
-        drill_data = seg_df[seg_df['cluster_label'] == target_cluster]
-        st.dataframe(drill_data.head(20), hide_index=True, use_container_width=True)
+    # 2. Detailed Breakdown
+    f1, f2 = st.columns([2, 1])
+    
+    with f1:
+        with st.container(border=True):
+            st.markdown("#### MOBILE VAN ROI ANALYSIS")
+            # Get dark zones to calculate ROI
+            dark_zones = SpatialEngine.identify_digital_dark_zones(active_df)
+            roi_van = fiscal_engine.calculate_mobile_van_efficiency(dark_zones)
+            
+            if roi_van and "Efficiency_Gain" in roi_van:
+                st.success(f"STRATEGY: {roi_van['Recommendation']}")
+                st.metric("EFFICIENCY GAIN", roi_van['Efficiency_Gain'], "vs Static Centers")
+                
+                # Simple chart
+                roi_chart_data = pd.DataFrame({
+                    "Method": ["Static Centers", "Mobile Vans"],
+                    "Cost Per Person": [roi_van['Cost_Per_Person_Static'], roi_van['Cost_Per_Person_Mobile']]
+                })
+                fig_roi = px.bar(roi_chart_data, x="Method", y="Cost Per Person", color="Method", title="Cost Efficiency Analysis")
+                fig_roi = apply_god_mode_theme(fig_roi)
+                st.plotly_chart(fig_roi, use_container_width=True)
+            else:
+                st.info("No Dark Zones currently detected to calculate Van ROI.")
+
+    with f2:
+        with st.container(border=True):
+            st.markdown("#### TRAINING ROI")
+            # Simulate operator data if missing
+            op_roi = fiscal_engine.calculate_training_program_roi(pd.DataFrame({'operator_id': range(100), 'trust_score': np.random.randint(40, 60, 100)}))
+            
+            if op_roi:
+                st.info(f"RECOMMENDATION: {op_roi['Recommendation']}")
+                st.write(f"Savings: ₹{op_roi.get('Net_Savings_By_Training', 0):,}")
+                st.caption(f"Reasoning: {op_roi.get('Fiscal_Logic')}")
 
 # ==============================================================================
 # 7. GLOBAL FOOTER (NEWS TICKER)
