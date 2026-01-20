@@ -74,19 +74,29 @@ Detecting "Ghost Centers" where enrolments are high but biometric refreshes are 
 ```
 ---
 ##⚡ Installation & Deployment
-Clone the Sovereign Repository:
 
-Bash
-git clone [https://github.com/your-repo/sentinel-prime.git](https://github.com/your-repo/sentinel-prime.git)
-cd sentinel-prime
-Initialize Secure Environment:
+1.  **Clone the Sovereign Repository**
+    ```bash
+    git clone [https://github.com/your-repo/sentinel-prime.git](https://github.com/codewithyug06/Sentinel_Prime)
+    cd Sentinel_Prime
+    ```
 
-Bash
-pip install -r requirements.txt
-Launch Aegis Command:
+2.  **Environment Configuration**
+    Create a `.env` file in the root directory and add your API credentials:
+    ```env
+    OPENAI_API_KEY=your_api_key_here
+    ```
 
-Bash
-streamlit run interface/dashboard.py
+3.  **Install Dependencies**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+4.  **Launch the Command Center**
+    ```bash
+    streamlit run interface/dashboard.py
+    ```
+
 ---
 ##SENTINEL PRIME is not just an analysis tool; it is Digital Public Infrastructure. By fusing high-end AI with pragmatic administrative logic, we provide UIDAI with the capability to manage the identity lifecycle of 1.4 Billion citizens with unprecedented precision, fiscal responsibility, and ethical rigor.
 
