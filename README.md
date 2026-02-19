@@ -73,7 +73,7 @@ Detecting "Ghost Centers" where enrolments are high but biometric refreshes are 
 
 ```
 ---
-###⚡ Installation & Deployment
+## ⚡ Installation & Deployment
 
 1.  **Clone the Sovereign Repository**
     ```bash
